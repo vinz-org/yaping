@@ -1,171 +1,208 @@
-// DOM Elements
-const postInput = document.getElementById('postInput');
-const postBtn = document.getElementById('postBtn');
-const feed = document.getElementById('feed');
-const postCountEl = document.getElementById('postCount');
-const likeGivenEl = document.getElementById('likeGiven');
+/* Reset & Base */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f0f0; color: #333; line-height: 1.6; }
 
-// Load data from localStorage
-let posts = JSON.parse(localStorage.getItem('yapingPosts')) || [];
-let communities = JSON.parse(localStorage.getItem('myCommunities')) || [
-    "🎮 Gaming Enthusiasts",
-    "📚 Book Lovers Club",
-    "🌱 Eco Warriors",
-    "💻 Tech Talk Daily"
-];
+/* Header */
+.app-header { background: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; position: sticky; top: 0; z-index: 100; }
+.app-header h1 { font-size: 1.5rem; color: #1d9bf0; font-weight: 600; margin: 0; } /* Warna biru Twitter */
+.profile-picture { cursor: pointer; }
+.profile-picture img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #1d9bf0; }
 
-// Initial Render
-renderPosts();
-updateProfileStats();
-renderCommunities();
+/* Tab Navigation */
+.tab-nav { display: flex; justify-content: center; background: white; border-bottom: 1px solid #e0e0e0; }
+.tab-btn { flex: 1; padding: 12px 0; background: none; border: none; font-size: 1rem; color: #666; cursor: pointer; position: relative; }
+.tab-btn.active { color: #1d9bf0; font-weight: 600; }
+.tab-btn.active::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 60%; height: 4px; background: #1d9bf0; border-radius: 2px; }
 
-// --- POSTING LOGIC ---
-postBtn.addEventListener('click', createPost);
+/* Tab Logic */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
-function createPost() {
-    const content = postInput.value.trim();
-    if (!content) return alert("Silakan tulis sesuatu terlebih dahulu!");
+/* Container */
+.container { max-width: 600px; margin: 20px auto; padding: 0 15px; position: relative; }
 
-    const newPost = {
-        id: Date.now(),
-        user: '@user',
-        content: content,
-        timestamp: new Date().toLocaleString('id-ID', {
-            day: 'numeric', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        }),
-        likes: 0,
-        likedByMe: false
-    };
+/* --- HALAMAN DETAIL KOMUNITAS (BARU) --- */
+.hidden { display: none !important; }
 
-    posts.unshift(newPost);
-    savePosts();
-    renderPosts();
-    updateProfileStats();
-    postInput.value = '';
+#community-detail-view {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #f0f0f0;
+    z-index: 200; /* Di atas semua elemen */
+    overflow-y: auto;
+    animation: slideUp 0.3s ease-out;
 }
 
-function savePosts() {
-    localStorage.setItem('yapingPosts', JSON.stringify(posts));
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
 }
 
-function renderPosts() {
-    feed.innerHTML = '';
-    posts.forEach(post => {
-        const postEl = document.createElement('div');
-        postEl.className = 'post-card';
-        postEl.innerHTML = `
-            <div class="post-header">
-                <span>${post.user}</span>
-                <span>${post.timestamp}</span>
-            </div>
-            <div class="post-content">${escapeHtml(post.content)}</div>
-            <div class="post-actions">
-                <button class="like-btn ${post.likedByMe ? 'active' : ''}" onclick="toggleLike(${post.id})">
-                    ❤️ ${post.likes}
-                </button>
-            </div>
-        `;
-        feed.appendChild(postEl);
-    });
+.back-btn {
+    padding: 15px;
+    font-size: 1rem;
+    color: #1d9bf0;
+    cursor: pointer;
+    font-weight: 600;
+    width: fit-content;
 }
 
-window.toggleLike = function(postId) {
-    const post = posts.find(p => p.id === postId);
-    if (!post) return;
-
-    if (post.likedByMe) {
-        post.likes--;
-        post.likedByMe = false;
-    } else {
-        post.likes++;
-        post.likedByMe = true;
-    }
-
-    savePosts();
-    renderPosts();
-    updateProfileStats();
-};
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+/* Banner Gelap */
+.community-banner {
+    width: 100%;
+    height: 150px;
+    background-color: #1d1d1f; /* Hitam pekat */
+    border-radius: 0 0 16px 16px;
+    margin-bottom: 20px;
 }
 
-function updateProfileStats() {
-    postCountEl.textContent = posts.length;
-    likeGivenEl.textContent = posts.filter(p => p.likedByMe).length;
+/* Header Komunitas (Avatar & Nama) */
+.community-header {
+    padding: 0 15px;
+    position: relative;
+    margin-top: -50px; /* Supaya naik ke banner */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
 }
 
-// --- TAB SWITCHING LOGIC ---
-const tabButtons = document.querySelectorAll('.tab-btn');
-const tabContents = document.querySelectorAll('.tab-content');
-const savedTab = localStorage.getItem('activeTab') || 'home';
-activateTab(savedTab);
-
-tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        const tabName = button.getAttribute('data-tab');
-        activateTab(tabName);
-        localStorage.setItem('activeTab', tabName);
-    });
-});
-
-function activateTab(tabName) {
-    tabButtons.forEach(btn => btn.classList.remove('active'));
-    tabContents.forEach(content => content.classList.remove('active'));
-
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+.community-avatar {
+    width: 80px;
+    height: 80px;
+    background: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    border: 4px solid #f0f0f0;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
-window.switchToTab = function(tabName) {
-    activateTab(tabName);
-    localStorage.setItem('activeTab', tabName);
-};
-
-// --- COMMUNITY LOGIC ---
-function saveCommunities() {
-    localStorage.setItem('myCommunities', JSON.stringify(communities));
+.community-info {
+    flex: 1;
+    margin-left: 15px;
+    padding-bottom: 10px;
 }
 
-function renderCommunities() {
-    const listContainer = document.getElementById('communityList');
-    listContainer.innerHTML = '';
-
-    communities.forEach((comm, index) => {
-        const li = document.createElement('li');
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = comm;
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Hapus';
-        deleteBtn.className = 'delete-comm-btn';
-        deleteBtn.onclick = () => deleteCommunity(index);
-
-        li.appendChild(nameSpan);
-        li.appendChild(deleteBtn);
-        listContainer.appendChild(li);
-    });
+.community-name-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 
-window.deleteCommunity = function(index) {
-    if (confirm('Yakin ingin menghapus komunitas ini?')) {
-        communities.splice(index, 1);
-        saveCommunities();
-        renderCommunities();
-    }
-};
+.community-name-row h2 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    margin: 0;
+    color: #1d1d1f;
+}
 
-window.addCommunity = function() {
-    const input = document.getElementById('newCommunityInput');
-    const name = input.value.trim();
-    if (!name) return alert("Masukkan nama komunitas!");
-    if (communities.includes(name)) return alert("Komunitas sudah ada!");
+/* Badge Verifikasi Biru */
+.verified-badge {
+    width: 20px;
+    height: 20px;
+    background: #1d9bf0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    fill: white;
+    padding: 2px;
+}
 
-    communities.push(name);
-    saveCommunities();
-    renderCommunities();
-    input.value = '';
-};
+.community-desc {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Tombol Follow */
+.follow-btn {
+    background-color: #1d9bf0; /* Biru Twitter */
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-bottom: 10px;
+}
+
+.follow-btn:hover {
+    background-color: #1a8cd8;
+}
+
+.follow-btn.following {
+    background-color: transparent;
+    border: 1px solid #ccc;
+    color: #333;
+}
+
+/* Konten Di Bawah */
+.community-content {
+    padding: 15px;
+}
+
+.content-card {
+    background: white;
+    border-radius: 16px;
+    padding: 15px;
+    border: 1px solid #e1e8ed;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    font-weight: 700;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.card-body {
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+}
+
+.card-footer {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* --- STYLE LAMA (DIPERTAHANKAN) --- */
+.feed { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+.post-card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.post-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85rem; color: #666; }
+.post-content { font-size: 1rem; margin-bottom: 10px; word-wrap: break-word; }
+.post-actions button { background: none; border: 1px solid #ddd; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.create-post { background: white; padding: 15px; border-radius: 12px; margin-top: auto; }
+#postInput { width: 100%; min-height: 60px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; resize: none; }
+#postBtn { margin-top: 10px; width: 100%; padding: 10px; background: #1d9bf0; color: white; border: none; border-radius: 8px; cursor: pointer; }
+.placeholder-page { background: white; padding: 20px; border-radius: 12px; text-align: center; }
+.add-community-form { display: flex; gap: 10px; margin: 15px 0; justify-content: center; }
+#newCommunityInput { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; }
+.community-list { list-style: none; text-align: left; margin-top: 10px; }
+.community-list li { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+.delete-comm-btn { background: #ffebee; color: #d32f2f; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+
+/* Profile Card Styles (Dari request sebelumnya) */
+.profile-card-new { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+.profile-header-row { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+.avatar-box { width: 60px; height: 60px; background-color: #eef2ff; color: #4a6da7; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 2rem; }
+.user-info { text-align: left; }
+.user-info h3 { font-size: 1.1rem; margin: 0; color: #333; }
+.join-date { font-size: 0.85rem; color: #888; }
+.divider { border: 0; height: 1px; background: #eee; margin: 15px 0; }
+.stats-row { display: flex; justify-content: space-around; margin-bottom: 20px; }
+.stat-item { display: flex; flex-direction: column; align-items: center; background: #f9f9f9; padding: 10px 30px; border-radius: 8px; width: 45%; }
+.stat-item strong { font-size: 1.2rem; color: #4a6da7; margin-bottom: 2px; }
+.edit-profile-btn { width: 100%; padding: 12px; background: #4a6da7; color: white; border: none; border-radius: 8px; cursor: pointer; }
+
+@media (max-width: 600px) {
+    .container { padding: 0 10px; }
+    .community-avatar { width: 60px; height: 60px; font-size: 2rem; }
+}
