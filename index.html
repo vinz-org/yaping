@@ -3,41 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yaping</title>
+    <title>Yaping - Komunitas</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Header -->
-    <header class="app-header">
+
+    <!-- Header Utama (Akan tersembunyi saat di detail) -->
+    <header class="app-header" id="mainHeader">
         <h1>Yaping</h1>
         <div class="profile-picture" onclick="switchToTab('profile')">
             <img src="https://via.placeholder.com/40" alt="Profile">
         </div>
     </header>
 
-    <!-- Navigation Tabs -->
-    <nav class="tab-nav">
+    <!-- Navigation Tabs (Akan tersembunyi saat di detail) -->
+    <nav class="tab-nav" id="mainNav">
         <button class="tab-btn active" data-tab="home">Home</button>
         <button class="tab-btn" data-tab="komunitas">Komunitas</button>
         <button class="tab-btn" data-tab="profile">Profile</button>
     </nav>
 
     <div class="container">
+
         <!-- TAB 1: HOME -->
         <div id="home-tab" class="tab-content active">
-            <!-- Feed DI ATAS -->
-            <div id="feed" class="feed">
-                <!-- Posts will be injected here -->
-            </div>
-
-            <!-- Form DI BAWAH -->
+            <div id="feed" class="feed"></div>
             <div class="create-post">
                 <textarea id="postInput" placeholder="Share something with Yaping..."></textarea>
                 <button id="postBtn">Post</button>
             </div>
         </div>
 
-        <!-- TAB 2: KOMUNITAS -->
+        <!-- TAB 2: KOMUNITAS LIST -->
         <div id="komunitas-tab" class="tab-content">
             <div class="placeholder-page">
                 <h3>Kelola Komunitas</h3>
@@ -45,7 +42,6 @@
                     <input type="text" id="newCommunityInput" placeholder="Nama Komunitas Baru...">
                     <button onclick="addCommunity()">Buat</button>
                 </div>
-                <p style="margin-top: 10px; font-size: 0.9rem; color: #666;">Daftar Komunitas:</p>
                 <ul id="communityList" class="community-list">
                     <!-- List komunitas akan di-render di sini -->
                 </ul>
@@ -76,6 +72,50 @@
                 <button class="edit-profile-btn">Edit Profil</button>
             </div>
         </div>
+
+        <!-- HALAMAN DETAIL KOMUNITAS (Overlay) -->
+        <div id="community-detail-view" class="hidden">
+            <!-- Tombol Kembali -->
+            <div class="back-btn" onclick="closeCommunityDetail()">
+                ← Kembali
+            </div>
+
+            <!-- Banner Gelap -->
+            <div class="community-banner"></div>
+
+            <!-- Info Komunitas (Nama & Badge) -->
+            <div class="community-header">
+                <div class="community-avatar">🌟</div>
+                <div class="community-info">
+                    <div class="community-name-row">
+                        <h2 id="detailCommName">Nama Komunitas</h2>
+                        <!-- Ikon Centang Biru (SVG) -->
+                        <svg class="verified-badge" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22.5 12.5C22.5 12.5 22.5 12.5 22.5 12.5C22.5 18.3 17.7 22.5 12 22.5C6.3 22.5 1.5 18.3 1.5 12.5C1.5 6.7 6.3 1.5 12 1.5C17.7 1.5 22.5 6.7 22.5 12.5Z" transform="translate(-1.5 -1.5)"/>
+                            <path fill="white" d="M12 2L9.5 4.5L7.5 4L5 8L10.5 10L9.5 13L12 16L14.5 13L13.5 10L19 8L16.5 4L14.5 4.5L12 2Z" />
+                        </svg>
+                    </div>
+                    <p class="community-desc">Komunitas resmi penggemar teknologi.</p>
+                </div>
+                <button class="follow-btn" onclick="toggleFollow(this)">Follow</button>
+            </div>
+
+            <!-- Konten Komunitas (Contoh Post Pemilik) -->
+            <div class="community-content">
+                <div class="content-card">
+                    <div class="card-header">
+                        <strong>@qwertty (owner)</strong>
+                    </div>
+                    <div class="card-body">
+                        Selamat datang di komunitas ini! Silakan berdiskusi dengan sopan.
+                    </div>
+                    <div class="card-footer">
+                        <span>10 jam yang lalu</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script src="script.js"></script>
