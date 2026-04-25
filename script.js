@@ -24,16 +24,13 @@ postBtn.addEventListener('click', createPost);
 
 function createPost() {
     const content = postInput.value.trim();
-    if (!content) return alert("Silakan tulis sesuatu terlebih dahulu!");
+    if (!content) return alert("Silakan tulis sesuatu!");
 
     const newPost = {
         id: Date.now(),
         user: '@user',
         content: content,
-        timestamp: new Date().toLocaleString('id-ID', {
-            day: 'numeric', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        }),
+        timestamp: new Date().toLocaleString('id-ID'),
         likes: 0,
         likedByMe: false
     };
@@ -136,13 +133,21 @@ function renderCommunities() {
 
     communities.forEach((comm, index) => {
         const li = document.createElement('li');
+        
+        // Membuat elemen klik untuk membuka detail
         const nameSpan = document.createElement('span');
         nameSpan.textContent = comm;
+        nameSpan.style.cursor = 'pointer';
+        nameSpan.style.flex = '1';
+        nameSpan.onclick = () => openCommunityDetail(comm); // Event klik
 
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Hapus';
         deleteBtn.className = 'delete-comm-btn';
-        deleteBtn.onclick = () => deleteCommunity(index);
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation(); // Mencegah trigger klik nama
+            deleteCommunity(index);
+        };
 
         li.appendChild(nameSpan);
         li.appendChild(deleteBtn);
@@ -169,3 +174,39 @@ window.addCommunity = function() {
     renderCommunities();
     input.value = '';
 };
+
+// --- FITUR BARU: DETAIL KOMUNITAS ---
+const communityDetailView = document.getElementById('community-detail-view');
+const mainHeader = document.getElementById('mainHeader');
+const mainNav = document.getElementById('mainNav');
+
+function openCommunityDetail(name) {
+    // Set nama komunitas di tampilan detail
+    document.getElementById('detailCommName').textContent = name;
+    
+    // Tampilkan view detail
+    communityDetailView.classList.remove('hidden');
+    
+    // Sembunyikan header dan tab utama agar fokus ke detail
+    mainHeader.style.display = 'none';
+    mainNav.style.display = 'none';
+}
+
+window.closeCommunityDetail = function() {
+    // Sembunyikan view detail
+    communityDetailView.classList.add('hidden');
+    
+    // Tampilkan kembali header dan tab utama
+    mainHeader.style.display = 'flex';
+    mainNav.style.display = 'flex';
+}
+
+window.toggleFollow = function(btn) {
+    if (btn.classList.contains('following')) {
+        btn.classList.remove('following');
+        btn.textContent = 'Follow';
+    } else {
+        btn.classList.add('following');
+        btn.textContent = 'Following';
+    }
+}
