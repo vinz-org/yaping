@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yaping App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="app-header">
+        <h1>Yaping</h1>
+        <div class="profile-picture" onclick="switchToTab('profile')">
+            <img src="https://via.placeholder.com/40" alt="Profile">
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="home">Home</button>
+        <button class="tab-btn" data-tab="komunitas">Komunitas</button>
+        <button class="tab-btn" data-tab="profile">Profile</button>
+    </nav>
+
+    <div class="container">
+
+        <!-- TAB 1: HOME (FEED) -->
+        <div id="home-tab" class="tab-content active">
+            <!-- Input Post -->
+            <div class="create-post">
+                <textarea id="postInput" placeholder="Apa yang sedang kamu pikirkan?"></textarea>
+                <button id="postBtn">Post</button>
+            </div>
+            
+            <!-- Feed Area -->
+            <div id="feed" class="feed">
+                <!-- Posts will be injected here by JS -->
+            </div>
+        </div>
+
+        <!-- TAB 2: KOMUNITAS -->
+        <div id="komunitas-tab" class="tab-content">
+            <div class="placeholder-page">
+                <h3>Kelola Komunitas</h3>
+                
+                <!-- Form Buat Komunitas Baru -->
+                <div style="margin-bottom: 20px; text-align: left;">
+                    <input type="text" id="newCommunityInput" placeholder="Nama Komunitas Baru..." style="width: 70%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <button onclick="addCommunity()" style="padding: 8px 12px; background: #4a6da7; color: white; border: none; border-radius: 4px; cursor: pointer;">Buat</button>
+                </div>
+
+                <p>Bergabung atau buat grup sendiri:</p>
+                <ul id="communityList" class="community-list">
+                    <!-- List komunitas akan di-render di sini -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- TAB 3: PROFILE (DESAIN BARU SESUAI GAMBAR) -->
+        <div id="profile-tab" class="tab-content">
+            <div class="profile-card-new">
+                <!-- Bagian Atas: Avatar & Nama -->
+                <div class="profile-header-row">
+                    <div class="avatar-box">
+                        👤
+                    </div>
+                    <div class="user-info">
+                        <h3>@user</h3>
+                        <span class="join-date">Bergabung sejak April 2026</span>
+                    </div>
+                </div>
+
+                <!-- Garis Pemisah -->
+                <hr class="divider">
+
+                <!-- Bagian Tengah: Statistik -->
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <strong id="postCountEl">0</strong>
+                        <span>Postingan</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong id="likeGivenEl">0</strong>
+                        <span>***** Diberikan</span>
+                    </div>
+                </div>
+
+                <!-- Bagian Bawah: Tombol -->
+                <button class="edit-profile-btn">Edit Profil</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
