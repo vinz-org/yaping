@@ -1,347 +1,171 @@
-/* Reset & Base */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f8f9fa;
-    color: #333;
-    line-height: 1.6;
+// DOM Elements
+const postInput = document.getElementById('postInput');
+const postBtn = document.getElementById('postBtn');
+const feed = document.getElementById('feed');
+const postCountEl = document.getElementById('postCount');
+const likeGivenEl = document.getElementById('likeGiven');
+
+// Load data from localStorage
+let posts = JSON.parse(localStorage.getItem('yapingPosts')) || [];
+let communities = JSON.parse(localStorage.getItem('myCommunities')) || [
+    "🎮 Gaming Enthusiasts",
+    "📚 Book Lovers Club",
+    "🌱 Eco Warriors",
+    "💻 Tech Talk Daily"
+];
+
+// Initial Render
+renderPosts();
+updateProfileStats();
+renderCommunities();
+
+// --- POSTING LOGIC ---
+postBtn.addEventListener('click', createPost);
+
+function createPost() {
+    const content = postInput.value.trim();
+    if (!content) return alert("Silakan tulis sesuatu terlebih dahulu!");
+
+    const newPost = {
+        id: Date.now(),
+        user: '@user',
+        content: content,
+        timestamp: new Date().toLocaleString('id-ID', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        }),
+        likes: 0,
+        likedByMe: false
+    };
+
+    posts.unshift(newPost);
+    savePosts();
+    renderPosts();
+    updateProfileStats();
+    postInput.value = '';
 }
 
-/* Header */
-.app-header {
-    background: white;
-    padding: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #e0e0e0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-.app-header h1 {
-    font-size: 1.5rem;
-    color: #4a6da7;
-    font-weight: 600;
-    margin: 0;
-}
-.profile-picture {
-    cursor: pointer;
-}
-.profile-picture img {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid #4a6da7;
-    transition: transform 0.2s;
-}
-.profile-picture img:hover {
-    transform: scale(1.1);
+function savePosts() {
+    localStorage.setItem('yapingPosts', JSON.stringify(posts));
 }
 
-/* Tab Navigation */
-.tab-nav {
-    display: flex;
-    justify-content: center;
-    background: white;
-    border-bottom: 1px solid #e0e0e0;
-    padding: 0;
-    margin: 0;
-}
-.tab-btn {
-    flex: 1;
-    padding: 12px 0;
-    background: none;
-    border: none;
-    font-size: 1rem;
-    color: #666;
-    cursor: pointer;
-    transition: all 0.3s;
-    position: relative;
-}
-.tab-btn:hover {
-    color: #4a6da7;
-}
-.tab-btn.active {
-    color: #4a6da7;
-    font-weight: 600;
-}
-.tab-btn.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60%;
-    height: 3px;
-    background: #4a6da7;
-    border-radius: 3px 3px 0 0;
+function renderPosts() {
+    feed.innerHTML = '';
+    posts.forEach(post => {
+        const postEl = document.createElement('div');
+        postEl.className = 'post-card';
+        postEl.innerHTML = `
+            <div class="post-header">
+                <span>${post.user}</span>
+                <span>${post.timestamp}</span>
+            </div>
+            <div class="post-content">${escapeHtml(post.content)}</div>
+            <div class="post-actions">
+                <button class="like-btn ${post.likedByMe ? 'active' : ''}" onclick="toggleLike(${post.id})">
+                    ❤️ ${post.likes}
+                </button>
+            </div>
+        `;
+        feed.appendChild(postEl);
+    });
 }
 
-/* Hide non-active tabs */
-.tab-content {
-    display: none;
-}
-.tab-content.active {
-    display: block;
-}
+window.toggleLike = function(postId) {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
 
-/* Container */
-.container {
-    max-width: 600px;
-    margin: 20px auto;
-    padding: 0 15px;
-}
-
-/* --- FEED STYLES --- */
-.feed {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-top: 20px;
-}
-.post-card {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    animation: fadeIn 0.3s ease-in-out;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.post-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    font-size: 0.85rem;
-    color: #666;
-}
-.post-content {
-    font-size: 1rem;
-    margin-bottom: 10px;
-    word-wrap: break-word;
-}
-.post-actions {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: #777;
-    font-size: 0.9rem;
-}
-.like-btn {
-    background: none;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 4px 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: all 0.2s;
-}
-.like-btn:hover {
-    background: #f0f0f0;
-}
-.like-btn.active {
-    color: #e74c3c;
-    border-color: #e74c3c;
-}
-
-/* Create Post */
-.create-post {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-#createPostInput, #postInput { /* Support both IDs just in case */
-    width: 100%;
-    min-height: 80px;
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    resize: vertical;
-    font-size: 1rem;
-    outline: none;
-    transition: border-color 0.3s;
-    font-family: inherit;
-}
-#createPostInput:focus, #postInput:focus {
-    border-color: #4a6da7;
-}
-#postBtn {
-    margin-top: 10px;
-    padding: 8px 16px;
-    background: #4a6da7;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background 0.3s;
-}
-#postBtn:hover {
-    background: #3b5a8a;
-}
-
-/* --- NEW PROFILE CARD STYLE (SESUAI GAMBAR) --- */
-.profile-card-new {
-    background: white;
-    padding: 25px;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    text-align: center;
-}
-
-.profile-header-row {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 10px;
-}
-
-.avatar-box {
-    width: 60px;
-    height: 60px;
-    background-color: #eef2ff; /* Warna ungu muda pucat */
-    color: #4a6da7;
-    border-radius: 12px; /* Kotak dengan sudut tumpul */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 2rem;
-}
-
-.user-info {
-    text-align: left;
-}
-
-.user-info h3 {
-    font-size: 1.1rem;
-    margin: 0;
-    color: #333;
-}
-
-.join-date {
-    font-size: 0.85rem;
-    color: #888;
-}
-
-.divider {
-    border: 0;
-    height: 1px;
-    background: #eee;
-    margin: 15px 0;
-}
-
-.stats-row {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 20px;
-}
-
-.stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: #f9f9f9;
-    padding: 10px 30px;
-    border-radius: 8px;
-    width: 45%;
-}
-
-.stat-item strong {
-    font-size: 1.2rem;
-    color: #4a6da7;
-    margin-bottom: 2px;
-}
-
-.stat-item span {
-    font-size: 0.8rem;
-    color: #666;
-}
-
-.edit-profile-btn {
-    width: 100%;
-    padding: 12px;
-    background: #4a6da7;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 500;
-    transition: background 0.3s;
-}
-
-.edit-profile-btn:hover {
-    background: #3b5a8a;
-}
-
-/* --- COMMUNITY LIST STYLES --- */
-.placeholder-page {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    margin-top: 20px;
-}
-
-.community-list {
-    list-style: none;
-    padding: 0;
-    margin-top: 15px;
-    text-align: left;
-}
-
-.community-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    border-bottom: 1px solid #eee;
-    transition: background 0.2s;
-}
-
-.community-list li:last-child {
-    border-bottom: none;
-}
-
-.delete-comm-btn {
-    background: #ffebee;
-    color: #d32f2f;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.8rem;
-}
-
-.delete-comm-btn:hover {
-    background: #ffcdd2;
-}
-
-/* Mobile Optimization */
-@media (max-width: 600px) {
-    .container {
-        padding: 0 10px;
+    if (post.likedByMe) {
+        post.likes--;
+        post.likedByMe = false;
+    } else {
+        post.likes++;
+        post.likedByMe = true;
     }
-    .create-post, .post-card, .placeholder-page, .profile-card-new {
-        padding: 15px;
-    }
-    .app-header h1 {
-        font-size: 1.3rem;
-    }
-    .profile-picture img {
-        width: 36px;
-        height: 36px;
-    }
+
+    savePosts();
+    renderPosts();
+    updateProfileStats();
+};
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
+
+function updateProfileStats() {
+    postCountEl.textContent = posts.length;
+    likeGivenEl.textContent = posts.filter(p => p.likedByMe).length;
+}
+
+// --- TAB SWITCHING LOGIC ---
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+const savedTab = localStorage.getItem('activeTab') || 'home';
+activateTab(savedTab);
+
+tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const tabName = button.getAttribute('data-tab');
+        activateTab(tabName);
+        localStorage.setItem('activeTab', tabName);
+    });
+});
+
+function activateTab(tabName) {
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+}
+
+window.switchToTab = function(tabName) {
+    activateTab(tabName);
+    localStorage.setItem('activeTab', tabName);
+};
+
+// --- COMMUNITY LOGIC ---
+function saveCommunities() {
+    localStorage.setItem('myCommunities', JSON.stringify(communities));
+}
+
+function renderCommunities() {
+    const listContainer = document.getElementById('communityList');
+    listContainer.innerHTML = '';
+
+    communities.forEach((comm, index) => {
+        const li = document.createElement('li');
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = comm;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Hapus';
+        deleteBtn.className = 'delete-comm-btn';
+        deleteBtn.onclick = () => deleteCommunity(index);
+
+        li.appendChild(nameSpan);
+        li.appendChild(deleteBtn);
+        listContainer.appendChild(li);
+    });
+}
+
+window.deleteCommunity = function(index) {
+    if (confirm('Yakin ingin menghapus komunitas ini?')) {
+        communities.splice(index, 1);
+        saveCommunities();
+        renderCommunities();
+    }
+};
+
+window.addCommunity = function() {
+    const input = document.getElementById('newCommunityInput');
+    const name = input.value.trim();
+    if (!name) return alert("Masukkan nama komunitas!");
+    if (communities.includes(name)) return alert("Komunitas sudah ada!");
+
+    communities.push(name);
+    saveCommunities();
+    renderCommunities();
+    input.value = '';
+};
