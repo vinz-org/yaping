@@ -1,726 +1,1065 @@
-// ============================================
-// 🚀 YAPING SOCIAL NETWORK - script.js
-// Facebook 2008 Style Compatible
-// ============================================
+/* ========================================
+   YAPING - Facebook Jadul Style (2008 era)
+   ======================================== */
 
-// ===== DATA & STATE =====
-let communities = JSON.parse(localStorage.getItem('yaping_communities')) || [
-    { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now() },
-    { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000 },
-    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000 }
-];
+/* Google Fonts fallback */
+@import url('https://fonts.googleapis.com/css2?family=Lucida+Grande&display=swap');
 
-let communityPosts = JSON.parse(localStorage.getItem('yaping_communityPosts')) || {};
-let joinedCommunities = JSON.parse(localStorage.getItem('yaping_joinedCommunities')) || [1];
-let currentUser = '@user';
-let lastCommunityCreate = localStorage.getItem('yaping_lastCommCreate') || 0;
-let emojiTargetInput = 'postInput';
-let currentViewedCommunity = null;
-
-// ===== INISIALISASI =====
-document.addEventListener('DOMContentLoaded', function() {
-    // Load data awal
-    renderCommunities('all');
-    renderFeed();
-    updateProfileStats();
-    
-    // Setup search
-    var searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') doSearch();
-        });
-    }
-    
-    // Auto-hide emoji picker when clicking outside
-    document.addEventListener('click', function(e) {
-        var picker = document.getElementById('emoji-picker');
-        if (picker && !picker.contains(e.target) && !e.target.closest('[onclick*="addEmoji"]')) {
-            picker.classList.add('hidden');
-        }
-    });
-    
-    // Load dark mode preference
-    if (localStorage.getItem('yaping_darkMode') === 'true') {
-        document.body.classList.add('dark-mode');
-        var toggle = document.getElementById('dark-mode-toggle');
-        if (toggle) toggle.checked = true;
-    }
-});
-
-// ===== NAVIGASI TAB =====
-function switchToTab(tabName) {
-    // Sembunyikan semua tab content
-    var tabs = document.querySelectorAll('.tab-content');
-    for (var i = 0; i < tabs.length; i++) {
-        tabs[i].classList.add('hidden');
-    }
-    
-    // Tampilkan tab yang dipilih
-    var targetTab = document.getElementById(tabName + '-tab');
-    if (targetTab) {
-        targetTab.classList.remove('hidden');
-    }
-    
-    // Update active state di navigasi topbar
-    var navLinks = document.querySelectorAll('#topbar-nav a');
-    for (var j = 0; j < navLinks.length; j++) {
-        navLinks[j].classList.remove('active-nav');
-    }
-    var activeNav = document.getElementById('nav-' + tabName);
-    if (activeNav) activeNav.classList.add('active-nav');
-    
-    // Load konten khusus jika perlu
-    if (tabName === 'komunitas') {
-        renderCommunities('all');
-    } else if (tabName === 'profile') {
-        updateProfileStats();
-        renderMyPosts();
-    } else if (tabName === 'home') {
-        renderFeed();
-    }
-    
-    // Tutup dropdown notifikasi jika terbuka
-    var notifDropdown = document.getElementById('notif-dropdown');
-    if (notifDropdown) notifDropdown.classList.add('hidden');
-    
-    // Reset viewed community
-    if (tabName !== 'community-detail') {
-        currentViewedCommunity = null;
-    }
+:root {
+    --fb-blue: #3b5998;
+    --fb-blue-dark: #2d4373;
+    --fb-blue-light: #6d84b4;
+    --fb-blue-lighter: #d8dfea;
+    --fb-blue-bg: #e8edf5;
+    --fb-white: #ffffff;
+    --fb-border: #b0b9c9;
+    --fb-text: #333333;
+    --fb-text-light: #777777;
+    --fb-link: #3b5998;
+    --fb-red: #c0392b;
+    --fb-green: #27ae60;
+    --fb-sidebar-bg: #f0f2f9;
+    --fb-box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
 }
 
-// ===== KOMUNITAS: RENDER DAFTAR =====
-function renderCommunities(filter) {
-    if (!filter) filter = 'all';
-    var list = document.getElementById('communityList');
-    if (!list) return;
-    
-    // Filter komunitas
-    var filtered = communities;
-    if (filter === 'mine') {
-        filtered = [];
-        for (var i = 0; i < communities.length; i++) {
-            if (communities[i].owner === currentUser) {
-                filtered.push(communities[i]);
-            }
-        }
-    }
-    
-    // Render
-    if (filtered.length === 0) {
-        list.innerHTML = '<li class="sidebar-empty">Belum ada komunitas</li>';
-        return;
-    }
-    
-    var html = '';
-    for (var k = 0; k < filtered.length; k++) {
-        var comm = filtered[k];
-        var isMember = joinedCommunities.indexOf(comm.id) !== -1;
-        html += '<li class="comm-list-item">' +
-            '<div class="comm-icon">' + comm.category + '</div>' +
-            '<div class="comm-info">' +
-                '<div class="comm-name" onclick="viewCommunity(' + comm.id + ')">' + escapeHtml(comm.name) + '</div>' +
-                '<div class="comm-meta">' + escapeHtml(comm.desc) + ' • 👥 ' + comm.members + ' anggota</div>' +
-            '</div>' +
-            '<div class="comm-actions">' +
-                (isMember 
-                    ? '<button class="primary-btn" onclick="viewCommunity(' + comm.id + ')">Lihat</button>' 
-                    : '<button class="primary-btn" onclick="joinCommunity(' + comm.id + ')">Gabung</button>') +
-            '</div>' +
-        '</li>';
-    }
-    list.innerHTML = html;
+/* DARK MODE */
+body.dark-mode {
+    --fb-blue-bg: #1a1f2e;
+    --fb-white: #242b3d;
+    --fb-border: #3a4460;
+    --fb-text: #d0d8f0;
+    --fb-text-light: #8899bb;
+    --fb-sidebar-bg: #1e2438;
+    --fb-box-shadow: 1px 1px 3px rgba(0,0,0,0.4);
 }
 
-// ===== KOMUNITAS: FILTER =====
-function filterComm(filter, btn) {
-    var buttons = document.querySelectorAll('.comm-filter .filter-btn');
-    for (var i = 0; i < buttons.length; i++) {
-        buttons[i].classList.remove('active');
-    }
-    if (btn) btn.classList.add('active');
-    renderCommunities(filter);
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Tahoma', 'Lucida Grande', 'Arial', sans-serif;
+    font-size: 14px;
+    background-color: var(--fb-blue-bg);
+    color: var(--fb-text);
+    min-height: 100vh;
 }
 
-// ===== KOMUNITAS: TAMBAH BARU =====
-function addCommunity() {
-    var nameInput = document.getElementById('newCommunityInput');
-    var descInput = document.getElementById('newCommunityDesc');
-    var catInput = document.getElementById('newCommunityCategory');
-    var cooldownInfo = document.getElementById('cooldown-info');
-    
-    var name = nameInput ? nameInput.value.trim() : '';
-    var desc = descInput ? descInput.value.trim() : '';
-    var category = catInput ? catInput.value : '🎮';
-    
-    // Validasi
-    if (!name) {
-        showToast('⚠️ Nama komunitas wajib diisi!');
-        if (nameInput) nameInput.focus();
-        return;
-    }
-    
-    // Cek cooldown 30 detik
-    var now = Date.now();
-    if (now - lastCommunityCreate < 30000) {
-        var remaining = Math.ceil((30000 - (now - lastCommunityCreate)) / 1000);
-        if (cooldownInfo) cooldownInfo.textContent = 'Tunggu ' + remaining + ' detik lagi...';
-        return;
-    }
-    
-    // Buat komunitas baru
-    var newComm = {
-        id: Date.now(),
-        name: name,
-        desc: desc || 'Tidak ada deskripsi',
-        category: category,
-        members: 1,
-        owner: currentUser,
-        createdAt: now
-    };
-    
-    communities.unshift(newComm);
-    lastCommunityCreate = now;
-    
-    // Simpan ke localStorage
-    saveCommunities();
-    localStorage.setItem('yaping_lastCommCreate', now.toString());
-    
-    // Reset form & update UI
-    if (nameInput) nameInput.value = '';
-    if (descInput) descInput.value = '';
-    if (cooldownInfo) cooldownInfo.textContent = '✅ Komunitas dibuat!';
-    
-    renderCommunities('all');
-    showToast('🎉 Komunitas "' + name + '" berhasil dibuat!');
-    
-    // Clear cooldown message after 3 seconds
-    setTimeout(function() {
-        if (cooldownInfo && cooldownInfo.textContent.indexOf('✅') !== -1) {
-            cooldownInfo.textContent = '';
-        }
-    }, 3000);
+/* ========== TOPBAR ========== */
+#topbar {
+    background: var(--fb-blue);
+    border-bottom: 2px solid var(--fb-blue-dark);
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-// ===== KOMUNITAS: JOIN =====
-function joinCommunity(commId) {
-    // Cek jika sudah join
-    if (joinedCommunities.indexOf(commId) !== -1) {
-        showToast('✅ Kamu sudah menjadi anggota!');
-        return;
-    }
-    
-    var comm = null;
-    for (var i = 0; i < communities.length; i++) {
-        if (communities[i].id === commId) {
-            comm = communities[i];
-            break;
-        }
-    }
-    if (!comm) return;
-    
-    // Tambah member & simpan
-    comm.members++;
-    joinedCommunities.push(commId);
-    
-    saveCommunities();
-    saveJoinedCommunities();
-    
-    // Update UI daftar komunitas
-    var activeFilter = document.querySelector('.comm-filter .filter-btn.active');
-    var filterType = (activeFilter && activeFilter.textContent.indexOf('Milik') !== -1) ? 'mine' : 'all';
-    renderCommunities(filterType);
-    
-    // Jika sedang melihat detail komunitas, re-render untuk tampilkan post box
-    if (currentViewedCommunity === commId) {
-        viewCommunity(commId);
-    }
-    
-    showToast('✅ Selamat bergabung di ' + comm.name + '! 🎉');
-    addNotification('Kamu sekarang anggota ' + comm.name, 'comm');
+#topbar-inner {
+    max-width: 980px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    gap: 10px;
 }
 
-// ===== KOMUNITAS: LIHAT DETAIL =====
-function viewCommunity(commId) {
-    var comm = null;
-    for (var i = 0; i < communities.length; i++) {
-        if (communities[i].id === commId) {
-            comm = communities[i];
-            break;
-        }
-    }
-    if (!comm) return;
-    
-    // Simpan ID komunitas yang sedang dilihat
-    currentViewedCommunity = commId;
-    
-    // Sembunyikan semua tab
-    var tabs = document.querySelectorAll('.tab-content');
-    for (var j = 0; j < tabs.length; j++) {
-        tabs[j].classList.add('hidden');
-    }
-    
-    // Tampilkan detail komunitas
-    var detailTab = document.getElementById('community-detail-tab');
-    if (!detailTab) return;
-    detailTab.classList.remove('hidden');
-    
-    // Cek apakah user sudah join
-    var isMember = joinedCommunities.indexOf(commId) !== -1;
-    
-    // Render post box (hanya jika member)
-    var postBoxHTML = '';
-    if (isMember) {
-        postBoxHTML = '<div class="content-box">' +
-            '<div class="box-title">💬 Buat Postingan</div>' +
-            '<textarea id="communityPostInput" class="comm-post-input" placeholder="Tulis sesuatu untuk ' + escapeHtml(comm.name) + '..."></textarea>' +
-            '<div style="display:flex;gap:8px;align-items:center;">' +
-                '<button class="option-btn" onclick="addEmoji(\'communityPostInput\')" style="font-size:11px;">😊 Emoji</button>' +
-                '<button class="primary-btn" onclick="submitCommunityPost(' + commId + ')">Bagikan</button>' +
-            '</div>' +
-        '</div>';
-    } else {
-        postBoxHTML = '<div class="content-box" style="text-align:center;padding:20px;">' +
-            '<div style="font-size:36px;margin-bottom:10px;">🔒</div>' +
-            '<p style="margin-bottom:12px;font-size:12px;">Gabung untuk bisa posting & berdiskusi</p>' +
-            '<button class="primary-btn" onclick="joinCommunity(' + commId + ')">👥 Gabung Sekarang</button>' +
-        '</div>';
-    }
-    
-    // Render posts komunitas
-    var postsHTML = renderCommunityPosts(commId);
-    
-    detailTab.innerHTML = 
-        '<div class="content-box">' +
-            '<a class="back-link" onclick="switchToTab(\'komunitas\');return false;">← Kembali ke Komunitas</a>' +
-            '<div class="comm-detail-banner"></div>' +
-            '<div class="comm-detail-header">' +
-                '<div class="comm-detail-icon">' + comm.category + '</div>' +
-                '<div class="comm-detail-info">' +
-                    '<div class="comm-detail-name">' + escapeHtml(comm.name) + '</div>' +
-                    '<div style="font-size:12px;color:var(--fb-text-light);margin-bottom:8px;">' + escapeHtml(comm.desc) + '</div>' +
-                    '<div class="comm-detail-meta">👥 ' + comm.members + ' anggota • Oleh ' + escapeHtml(comm.owner) + 
-                    (isMember ? ' • <span style="color:var(--fb-green)">✅ Anggota</span>' : '') + '</div>' +
-                '</div>' +
-                (!isMember ? '<button class="follow-btn-big" onclick="joinCommunity(' + commId + ')">Gabung</button>' : '') +
-            '</div>' +
-        '</div>' +
-        postBoxHTML +
-        '<div class="content-box">' +
-            '<div class="box-title">💬 Diskusi Terbaru</div>' +
-            '<div id="comm-posts-feed">' + postsHTML + '</div>' +
-        '</div>';
+#logo {
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+    font-family: 'Georgia', serif;
+    letter-spacing: -1px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    min-width: 90px;
 }
 
-// ===== KOMUNITAS: SUBMIT POST =====
-function submitCommunityPost(commId) {
-    var input = document.getElementById('communityPostInput');
-    var text = input ? input.value.trim() : '';
-    
-    if (!text) {
-        showToast('⚠️ Tulis sesuatu dulu ya!');
-        if (input) input.focus();
-        return;
-    }
-    
-    var comm = null;
-    for (var i = 0; i < communities.length; i++) {
-        if (communities[i].id === commId) {
-            comm = communities[i];
-            break;
-        }
-    }
-    if (!comm) return;
-    
-    // Buat post object
-    var newPost = {
-        id: Date.now(),
-        communityId: commId,
-        author: currentUser,
-        content: text,
-        likes: 0,
-        likedBy: [],
-        createdAt: Date.now(),
-        photo: null
-    };
-    
-    // Simpan ke communityPosts
-    if (!communityPosts[commId]) {
-        communityPosts[commId] = [];
-    }
-    communityPosts[commId].unshift(newPost);
-    
-    // Simpan ke localStorage
-    saveCommunityPosts();
-    
-    // Reset input & update UI
-    if (input) input.value = '';
-    showToast('✅ Postingan dibagikan ke ' + comm.name);
-    
-    // Re-render feed
-    var feedEl = document.getElementById('comm-posts-feed');
-    if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
-    
-    // Update notifikasi untuk owner komunitas
-    if (comm.owner !== currentUser) {
-        addNotification(currentUser + ' memposting di ' + comm.name, 'comm');
-    }
+#topbar-search {
+    display: flex;
+    flex: 1;
+    max-width: 300px;
 }
 
-// ===== KOMUNITAS: RENDER POSTS =====
-function renderCommunityPosts(commId) {
-    var posts = communityPosts[commId] || [];
-    
-    if (posts.length === 0) {
-        return '<div class="sidebar-empty">Belum ada diskusi. Jadilah yang pertama! 🎉</div>';
-    }
-    
-    var html = '';
-    for (var i = 0; i < posts.length; i++) {
-        var post = posts[i];
-        var timeAgo = formatTimeAgo(post.createdAt);
-        var isLiked = post.likedBy.indexOf(currentUser) !== -1;
-        
-        html += '<div class="post-card" style="margin-bottom:8px;">' +
-            '<div class="post-card-header">' +
-                '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
-                '<span class="post-timestamp">' + timeAgo + '</span>' +
-            '</div>' +
-            '<div class="post-body">' + escapeHtml(post.content) + '</div>' +
-            '<div class="post-footer">' +
-                '<div class="post-actions-left">' +
-                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',' + post.id + ')">' + 
-                        (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
-                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
-                '</div>' +
-                '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
-            '</div>' +
-        '</div>';
-    }
-    return html;
+#topbar-search input {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid #ccc;
+    border-right: none;
+    border-radius: 3px 0 0 3px;
+    font-size: 12px;
+    font-family: 'Tahoma', sans-serif;
 }
 
-// ===== KOMUNITAS: LIKE POST =====
-function likeCommunityPost(commId, postId) {
-    var posts = communityPosts[commId];
-    if (!posts) return;
-    
-    var post = null;
-    for (var i = 0; i < posts.length; i++) {
-        if (posts[i].id === postId) {
-            post = posts[i];
-            break;
-        }
-    }
-    if (!post) return;
-    
-    var idx = post.likedBy.indexOf(currentUser);
-    if (idx === -1) {
-        post.likes++;
-        post.likedBy.push(currentUser);
-    } else {
-        post.likes--;
-        post.likedBy.splice(idx, 1);
-    }
-    
-    saveCommunityPosts();
-    
-    // Re-render jika sedang view komunitas ini
-    if (currentViewedCommunity === commId) {
-        var feedEl = document.getElementById('comm-posts-feed');
-        if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
-    }
+#topbar-search button {
+    padding: 5px 10px;
+    background: #4a69b0;
+    color: white;
+    border: 1px solid #3a5290;
+    border-radius: 0 3px 3px 0;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
 }
 
-// ===== HOME: SUBMIT POST =====
-function submitPost() {
-    var input = document.getElementById('postInput');
-    var text = input ? input.value.trim() : '';
-    
-    if (!text) {
-        showToast('⚠️ Tulis sesuatu dulu ya!');
-        if (input) input.focus();
-        return;
-    }
-    
-    // Buat post object (bisa dikembangkan untuk simpan ke localStorage)
-    showToast('✅ Postingan dibagikan! 🎉');
-    if (input) input.value = '';
-    
-    // Re-render feed
-    renderFeed();
+#topbar-search button:hover { background: #5a79c0; }
+
+#topbar-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
 }
 
-// ===== HOME: RENDER FEED =====
-function renderFeed() {
-    var feed = document.getElementById('feed');
-    if (!feed) return;
-    
-    // Placeholder untuk demo
-    if (!feed.innerHTML.trim() || feed.innerHTML.indexOf('placeholder') !== -1) {
-        feed.innerHTML = 
-            '<div class="post-card">' +
-                '<div class="post-card-header">' +
-                    '<span class="post-username">@user</span>' +
-                    '<span class="post-timestamp">Baru saja</span>' +
-                '</div>' +
-                '<div class="post-body">Selamat datang di Yaping! 👋 Mulai bagikan pikiranmu atau gabung komunitas menarik.</div>' +
-                '<div class="post-footer">' +
-                    '<div class="post-actions-left">' +
-                        '<button class="like-btn" onclick="showToast(\'❤️ Terima kasih!\')">🤍 0</button>' +
-                        '<button class="comment-btn" onclick="showToast(\'💬 Komentar...\')">💬 Komentar</button>' +
-                    '</div>' +
-                    '<button class="share-btn" onclick="showToast(\'🔗 Dibagikan!\')">🔗 Bagikan</button>' +
-                '</div>' +
-            '</div>';
-    }
+#topbar-nav a {
+    color: white;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 8px;
+    border-radius: 3px;
+    position: relative;
 }
 
-// ===== PROFILE: RENDER MY POSTS =====
-function renderMyPosts() {
-    var feed = document.getElementById('my-posts-feed');
-    if (!feed) return;
-    feed.innerHTML = '<div class="sidebar-empty">Kamu belum memiliki postingan. Yuk mulai berbagi! ✨</div>';
+#topbar-nav a:hover { background: rgba(255,255,255,0.15); }
+#topbar-nav a.active-nav { background: rgba(255,255,255,0.2); }
+
+#notif-badge {
+    background: red;
+    color: white;
+    font-size: 10px;
+    border-radius: 50%;
+    padding: 1px 4px;
+    position: absolute;
+    top: 0;
+    right: 0;
 }
 
-// ===== PROFILE: UPDATE STATS =====
-function updateProfileStats() {
-    var el;
-    
-    el = document.getElementById('pi-username'); if (el) el.textContent = currentUser;
-    el = document.getElementById('pi-fullname'); if (el) el.textContent = 'Pengguna Yaping';
-    el = document.getElementById('pi-posts'); if (el) el.textContent = '0';
-    el = document.getElementById('pi-likes'); if (el) el.textContent = '0';
-    
-    var myComms = 0;
-    for (var i = 0; i < communities.length; i++) {
-        if (communities[i].owner === currentUser) myComms++;
-    }
-    el = document.getElementById('pi-comms'); if (el) el.textContent = myComms;
-    
-    el = document.getElementById('sidebar-username'); if (el) el.textContent = currentUser;
-    el = document.getElementById('profile-username-display'); if (el) el.textContent = currentUser;
+/* ========== NOTIFICATION DROPDOWN ========== */
+#notif-dropdown {
+    position: fixed;
+    top: 42px;
+    right: 10px;
+    width: 280px;
+    background: white;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+    z-index: 1000;
 }
 
-// ===== PROFILE: SWITCH SECTION =====
-function showProfileSection(section, btn) {
-    // Update active button
-    var buttons = document.querySelectorAll('.profile-tab-btn');
-    for (var i = 0; i < buttons.length; i++) {
-        buttons[i].classList.remove('active');
-    }
-    if (btn) btn.classList.add('active');
-    
-    // Hide all sections
-    var sections = ['profile-info-section', 'profile-posts-section', 'profile-edit-section'];
-    for (var j = 0; j < sections.length; j++) {
-        var sec = document.getElementById(sections[j]);
-        if (sec) sec.classList.add('hidden');
-    }
-    
-    // Show selected
-    if (section === 'info') {
-        var sec = document.getElementById('profile-info-section');
-        if (sec) sec.classList.remove('hidden');
-    }
-    if (section === 'posts') {
-        var sec = document.getElementById('profile-posts-section');
-        if (sec) {
-            sec.classList.remove('hidden');
-            renderMyPosts();
-        }
-    }
-    if (section === 'edit') {
-        // Load current values
-        var el = document.getElementById('edit-username'); if (el) el.value = currentUser;
-        el = document.getElementById('edit-fullname'); if (el) el.value = 'Pengguna Yaping';
-        el = document.getElementById('edit-bio'); if (el) el.value = '';
-        var sec = document.getElementById('profile-edit-section');
-        if (sec) sec.classList.remove('hidden');
-    }
+.notif-header {
+    background: var(--fb-blue);
+    color: white;
+    padding: 8px 12px;
+    font-weight: bold;
+    font-size: 12px;
 }
 
-// ===== PROFILE: SAVE =====
-function saveProfile() {
-    var elUser = document.getElementById('edit-username');
-    var elName = document.getElementById('edit-fullname');
-    
-    var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
-    var newFullname = elName ? (elName.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
-    
-    currentUser = newUsername;
-    
-    // Update display
-    var els = ['sidebar-username', 'profile-username-display', 'pi-username'];
-    for (var i = 0; i < els.length; i++) {
-        var el = document.getElementById(els[i]);
-        if (el) el.textContent = currentUser;
-    }
-    el = document.getElementById('pi-fullname'); if (el) el.textContent = newFullname;
-    
-    showToast('✅ Profil berhasil diperbarui!');
-    showProfileSection('info', document.querySelector('.profile-tab-btn'));
+#notif-list { max-height: 300px; overflow-y: auto; }
+
+.notif-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 12px;
+    cursor: pointer;
 }
 
-// ===== SETTINGS: DARK MODE =====
-function toggleDarkMode() {
-    var toggle = document.getElementById('dark-mode-toggle');
-    var isDark = toggle ? toggle.checked : false;
-    document.body.classList.toggle('dark-mode', isDark);
-    localStorage.setItem('yaping_darkMode', isDark);
+.notif-item:hover { background: #f5f5f5; }
+
+.notif-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--fb-text-light);
+    font-size: 12px;
 }
 
-// ===== SETTINGS: FONT SIZE =====
-function changeFontSize(size) {
-    document.body.style.fontSize = size + 'px';
+.notif-footer {
+    padding: 8px 12px;
+    text-align: center;
+    border-top: 1px solid #eee;
 }
 
-// ===== SETTINGS: CLEAR POSTS =====
-function clearAllPosts() {
-    if (confirm('Hapus semua postingan? Tindakan ini tidak bisa dibatalkan!')) {
-        communityPosts = {};
-        saveCommunityPosts();
-        showToast('🗑️ Semua postingan dihapus!');
-        if (currentViewedCommunity) {
-            var feedEl = document.getElementById('comm-posts-feed');
-            if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
-        }
-    }
+.notif-footer a { font-size: 11px; color: var(--fb-blue); }
+
+/* ========== MAIN LAYOUT ========== */
+#main-layout {
+    max-width: 980px;
+    margin: 12px auto;
+    display: flex;
+    gap: 10px;
+    padding: 0 10px;
+    align-items: flex-start;
 }
 
-// ===== SETTINGS: RESET ALL =====
-function resetAllData() {
-    if (confirm('Reset SEMUA data? Ini akan menghapus komunitas, postingan, dan pengaturan!')) {
-        localStorage.clear();
-        location.reload();
-    }
+/* ========== LEFT SIDEBAR ========== */
+#left-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-// ===== NOTIFICATIONS =====
-function showNotifications() {
-    var dropdown = document.getElementById('notif-dropdown');
-    if (dropdown) dropdown.classList.toggle('hidden');
+/* ========== RIGHT SIDEBAR ========== */
+#right-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-function addNotification(text, type) {
-    var badge = document.getElementById('notif-badge');
-    if (!badge) return;
-    
-    var count = parseInt(badge.textContent) || 0;
-    badge.textContent = count + 1;
-    badge.classList.remove('hidden');
-    
-    var list = document.getElementById('notif-list');
-    if (!list) return;
-    
-    if (list.querySelector('.notif-empty')) {
-        list.innerHTML = '';
-    }
-    
-    var notif = document.createElement('div');
-    notif.className = 'notif-item';
-    notif.innerHTML = '<div>' + escapeHtml(text) + '</div><small>Baru saja</small>';
-    list.insertBefore(notif, list.firstChild);
+/* ========== CENTER CONTENT ========== */
+#center-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-function clearNotifications() {
-    var list = document.getElementById('notif-list');
-    var badge = document.getElementById('notif-badge');
-    if (list) list.innerHTML = '<div class="notif-empty">Belum ada notifikasi</div>';
-    if (badge) {
-        badge.classList.add('hidden');
-        badge.textContent = '0';
-    }
+/* ========== SIDEBAR BOXES ========== */
+.sidebar-box {
+    background: var(--fb-white);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    padding: 10px;
+    box-shadow: var(--fb-box-shadow);
 }
 
-// ===== EMOJI PICKER =====
-function addEmoji(targetInput) {
-    if (!targetInput) targetInput = 'postInput';
-    emojiTargetInput = targetInput;
-    var picker = document.getElementById('emoji-picker');
-    if (picker) picker.classList.toggle('hidden');
+.sidebar-box-title {
+    font-weight: bold;
+    font-size: 12px;
+    color: var(--fb-blue);
+    border-bottom: 1px solid var(--fb-blue-lighter);
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
-function insertEmoji(emoji) {
-    var input = document.getElementById(emojiTargetInput);
-    if (input) {
-        input.value += emoji;
-        input.focus();
-    }
-    var picker = document.getElementById('emoji-picker');
-    if (picker) picker.classList.add('hidden');
+.sidebar-profile-pic {
+    width: 60px;
+    height: 60px;
+    background: var(--fb-blue-lighter);
+    border: 2px solid var(--fb-blue);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 8px;
 }
 
-// ===== PHOTO UPLOAD (placeholder) =====
-function addPhoto(targetInput) {
-    showToast('📷 Fitur upload foto akan segera hadir!');
+.sidebar-username {
+    text-align: center;
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--fb-blue);
 }
 
-// ===== SEARCH =====
-function doSearch() {
-    var input = document.getElementById('searchInput');
-    var query = input ? input.value.trim() : '';
-    if (query) {
-        showToast('🔍 Mencari: "' + query + '"');
-    }
+.sidebar-tagline {
+    text-align: center;
+    font-size: 11px;
+    color: var(--fb-text-light);
+    margin-bottom: 8px;
 }
 
-// ===== UTILITIES =====
-function showToast(message) {
-    var toast = document.getElementById('toast');
-    if (!toast) return;
-    
-    toast.textContent = message;
-    toast.classList.remove('hidden');
-    setTimeout(function() {
-        toast.classList.add('hidden');
-    }, 3000);
+.sidebar-hr { border: none; border-top: 1px solid var(--fb-border); margin: 8px 0; }
+
+.sidebar-menu {
+    list-style: none;
 }
 
-function saveCommunities() {
-    localStorage.setItem('yaping_communities', JSON.stringify(communities));
+.sidebar-menu li {
+    border-bottom: 1px dotted var(--fb-border);
 }
 
-function saveCommunityPosts() {
-    localStorage.setItem('yaping_communityPosts', JSON.stringify(communityPosts));
+.sidebar-menu li:last-child { border-bottom: none; }
+
+.sidebar-menu a {
+    display: block;
+    padding: 5px 4px;
+    color: var(--fb-text);
+    text-decoration: none;
+    font-size: 12px;
+    border-radius: 2px;
 }
 
-function saveJoinedCommunities() {
-    localStorage.setItem('yaping_joinedCommunities', JSON.stringify(joinedCommunities));
+.sidebar-menu a:hover {
+    background: var(--fb-blue-lighter);
+    color: var(--fb-blue);
+    padding-left: 8px;
+    transition: padding 0.1s;
 }
 
-function formatTimeAgo(timestamp) {
-    var diff = Date.now() - timestamp;
-    var minutes = Math.floor(diff / 60000);
-    var hours = Math.floor(diff / 3600000);
-    var days = Math.floor(diff / 86400000);
-    
-    if (minutes < 1) return 'Baru saja';
-    if (minutes < 60) return minutes + 'm lalu';
-    if (hours < 24) return hours + 'j lalu';
-    return days + 'h lalu';
+.sidebar-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px dotted var(--fb-border);
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+.sidebar-stat:last-child { border-bottom: none; }
+.sidebar-stat strong { color: var(--fb-blue); }
+
+.friend-item {
+    font-size: 12px;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--fb-text);
 }
 
-// ===== MODAL =====
-function closeModal() {
-    var modal = document.getElementById('modal-overlay');
-    if (modal) modal.classList.add('hidden');
+.friend-item.offline { color: var(--fb-text-light); }
+
+.online-dot {
+    width: 8px; height: 8px;
+    background: var(--fb-green);
+    border-radius: 50%;
+    display: inline-block;
 }
 
-function showModal(title, content) {
-    var titleEl = document.getElementById('modal-title');
-    var bodyEl = document.getElementById('modal-body');
-    var overlay = document.getElementById('modal-overlay');
-    
-    if (titleEl) titleEl.textContent = title;
-    if (bodyEl) bodyEl.innerHTML = content;
-    if (overlay) overlay.classList.remove('hidden');
+.offline-dot {
+    width: 8px; height: 8px;
+    background: #bbb;
+    border-radius: 50%;
+    display: inline-block;
 }
+
+.sidebar-empty {
+    font-size: 12px;
+    color: var(--fb-text-light);
+    text-align: center;
+    padding: 8px;
+}
+
+/* ========== CONTENT BOXES ========== */
+.content-box {
+    background: var(--fb-white);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    padding: 12px;
+    box-shadow: var(--fb-box-shadow);
+}
+
+.box-title {
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--fb-blue-dark);
+    border-bottom: 2px solid var(--fb-blue-lighter);
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+}
+
+/* ========== TAB LOGIC ========== */
+.tab-content { display: flex; flex-direction: column; gap: 8px; }
+.tab-content.hidden { display: none !important; }
+
+/* ========== CREATE POST ========== */
+.create-post-header {
+    font-size: 12px;
+    color: var(--fb-text-light);
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+#postInput {
+    width: 100%;
+    min-height: 70px;
+    padding: 8px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    resize: vertical;
+    font-family: 'Tahoma', sans-serif;
+    font-size: 13px;
+    background: var(--fb-white);
+    color: var(--fb-text);
+}
+
+#postInput:focus {
+    outline: none;
+    border-color: var(--fb-blue);
+    box-shadow: 0 0 3px rgba(59,89,152,0.3);
+}
+
+.create-post-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.post-options { display: flex; gap: 6px; }
+
+.option-btn {
+    padding: 4px 8px;
+    background: var(--fb-blue-lighter);
+    color: var(--fb-blue-dark);
+    border: 1px solid var(--fb-blue-light);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.option-btn:hover { background: var(--fb-blue-light); color: white; }
+
+/* ========== BUTTONS ========== */
+.primary-btn {
+    padding: 6px 14px;
+    background: linear-gradient(to bottom, #5b7cc4, #3b5998);
+    color: white;
+    border: 1px solid #2d4373;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    font-family: 'Tahoma', sans-serif;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+}
+
+.primary-btn:hover {
+    background: linear-gradient(to bottom, #6b8cd4, #4b69a8);
+}
+
+.primary-btn:active {
+    background: linear-gradient(to bottom, #3b5998, #5b7cc4);
+    transform: translateY(1px);
+}
+
+.secondary-btn {
+    padding: 6px 14px;
+    background: linear-gradient(to bottom, #ffffff, #e4e4e4);
+    color: #333;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.secondary-btn:hover { background: linear-gradient(to bottom, #f0f0f0, #d4d4d4); }
+
+.danger-btn {
+    padding: 5px 10px;
+    background: linear-gradient(to bottom, #e05252, #c0392b);
+    color: white;
+    border: 1px solid #a0291b;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.danger-btn:hover { background: linear-gradient(to bottom, #f06262, #d0493b); }
+
+/* ========== POST CARDS ========== */
+.post-card {
+    background: var(--fb-white);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    box-shadow: var(--fb-box-shadow);
+    overflow: hidden;
+}
+
+.post-card-header {
+    background: var(--fb-blue-lighter);
+    border-bottom: 1px solid var(--fb-border);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.post-username {
+    font-weight: bold;
+    color: var(--fb-blue);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.post-username:hover { text-decoration: underline; }
+
+.post-timestamp {
+    font-size: 11px;
+    color: var(--fb-text-light);
+}
+
+.post-body {
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.post-footer {
+    border-top: 1px solid var(--fb-border);
+    padding: 6px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fafbfc;
+}
+
+.post-actions-left { display: flex; gap: 6px; }
+
+.like-btn, .comment-btn, .share-btn {
+    padding: 3px 10px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    background: white;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+    color: var(--fb-text);
+}
+
+.like-btn:hover { background: #fff0f0; border-color: #ffaaaa; }
+.like-btn.liked { background: #fff0f0; border-color: #ff6666; color: #d32f2f; font-weight: bold; }
+.comment-btn:hover { background: var(--fb-blue-lighter); }
+.share-btn:hover { background: #f0fff0; border-color: #88cc88; }
+
+.post-delete-btn {
+    padding: 3px 8px;
+    background: none;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #c0392b;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.post-delete-btn:hover { background: #ffebee; }
+
+/* Comment Section */
+.comment-section {
+    border-top: 1px solid var(--fb-border);
+    background: #fafbff;
+    padding: 8px 12px;
+    display: none;
+}
+
+.comment-section.open { display: block; }
+
+.comment-input-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.comment-input-row input {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'Tahoma', sans-serif;
+    background: var(--fb-white);
+    color: var(--fb-text);
+}
+
+.comment-input-row button {
+    padding: 5px 10px;
+    background: var(--fb-blue);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.comment-list { display: flex; flex-direction: column; gap: 5px; }
+
+.comment-item {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 3px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.comment-item strong { color: var(--fb-blue); margin-right: 5px; }
+
+/* ========== COMMUNITY ========== */
+.create-comm-form { display: flex; flex-direction: column; gap: 10px; }
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.form-row label {
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--fb-text);
+}
+
+.form-row input, .form-row select, .form-row textarea {
+    padding: 6px 8px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'Tahoma', sans-serif;
+    background: var(--fb-white);
+    color: var(--fb-text);
+}
+
+.form-row input:focus, .form-row textarea:focus {
+    outline: none;
+    border-color: var(--fb-blue);
+}
+
+.form-row textarea { min-height: 70px; resize: vertical; }
+
+.form-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cooldown-text {
+    font-size: 11px;
+    color: #c0392b;
+    font-style: italic;
+}
+
+.comm-filter {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.filter-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    background: white;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--fb-text);
+}
+
+.filter-btn.active {
+    background: var(--fb-blue);
+    color: white;
+    border-color: var(--fb-blue-dark);
+}
+
+/* Community List */
+.community-list-new { list-style: none; }
+
+.comm-list-item {
+    border-bottom: 1px solid var(--fb-border);
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.comm-list-item:last-child { border-bottom: none; }
+
+.comm-icon {
+    font-size: 20px;
+    width: 40px;
+    height: 40px;
+    background: var(--fb-blue-lighter);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.comm-info { flex: 1; min-width: 0; }
+
+.comm-name {
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--fb-blue);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comm-name:hover { text-decoration: underline; }
+
+.comm-meta {
+    font-size: 11px;
+    color: var(--fb-text-light);
+    margin-top: 2px;
+}
+
+.comm-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* ========== COMMUNITY DETAIL ========== */
+.comm-detail-banner {
+    height: 120px;
+    background: linear-gradient(135deg, var(--fb-blue-dark) 0%, var(--fb-blue-light) 100%);
+    border-radius: 3px;
+    margin-bottom: 8px;
+    border: 1px solid var(--fb-border);
+    display: flex;
+    align-items: flex-end;
+    padding: 12px;
+}
+
+.comm-detail-header {
+    background: var(--fb-white);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    padding: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.comm-detail-icon {
+    width: 70px;
+    height: 70px;
+    background: var(--fb-blue-lighter);
+    border: 2px solid var(--fb-blue);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    flex-shrink: 0;
+}
+
+.comm-detail-info { flex: 1; }
+
+.comm-detail-name {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--fb-text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.verified-check {
+    background: var(--fb-blue);
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+}
+
+.comm-detail-meta { font-size: 12px; color: var(--fb-text-light); }
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 8px;
+    color: var(--fb-blue);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.back-link:hover { text-decoration: underline; }
+
+.follow-btn-big {
+    padding: 7px 18px;
+    background: linear-gradient(to bottom, #5b7cc4, #3b5998);
+    color: white;
+    border: 1px solid #2d4373;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.follow-btn-big.following {
+    background: linear-gradient(to bottom, #ffffff, #e4e4e4);
+    color: #333;
+    border-color: #bbb;
+}
+
+/* Post in community */
+.comm-post-input {
+    width: 100%;
+    min-height: 60px;
+    padding: 8px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-family: 'Tahoma', sans-serif;
+    background: var(--fb-white);
+    color: var(--fb-text);
+    resize: vertical;
+}
+
+/* ========== PROFILE ========== */
+.profile-cover {
+    background: linear-gradient(135deg, var(--fb-blue-dark), var(--fb-blue-light));
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    padding: 20px;
+    box-shadow: var(--fb-box-shadow);
+}
+
+.profile-cover-inner {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.profile-avatar-big {
+    width: 80px;
+    height: 80px;
+    background: white;
+    border: 3px solid white;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+}
+
+.profile-name-area h2 { color: white; font-size: 20px; }
+.profile-name-area span { color: rgba(255,255,255,0.8); font-size: 12px; }
+
+.profile-tabs {
+    background: var(--fb-white);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    display: flex;
+    overflow: hidden;
+    box-shadow: var(--fb-box-shadow);
+}
+
+.profile-tab-btn {
+    flex: 1;
+    padding: 8px;
+    background: none;
+    border: none;
+    border-right: 1px solid var(--fb-border);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'Tahoma', sans-serif;
+    color: var(--fb-blue);
+    font-weight: bold;
+}
+
+.profile-tab-btn:last-child { border-right: none; }
+.profile-tab-btn:hover { background: var(--fb-blue-lighter); }
+.profile-tab-btn.active { background: var(--fb-blue); color: white; }
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.info-item {
+    padding: 8px;
+    background: var(--fb-blue-bg);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.info-item strong { color: var(--fb-text-light); display: block; margin-bottom: 2px; }
+
+/* ========== SETTINGS ========== */
+.settings-group {
+    margin-bottom: 15px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.settings-label {
+    background: var(--fb-blue-lighter);
+    padding: 6px 10px;
+    font-weight: bold;
+    font-size: 12px;
+    color: var(--fb-blue-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--fb-border);
+    font-size: 12px;
+}
+
+.settings-row:last-child { border-bottom: none; }
+
+.settings-row select {
+    padding: 3px 6px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+}
+
+/* Toggle Switch */
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #ccc; border-radius: 20px; cursor: pointer;
+    transition: 0.3s;
+}
+.slider:before {
+    content: ""; position: absolute;
+    width: 14px; height: 14px; left: 3px; bottom: 3px;
+    background: white; border-radius: 50%; transition: 0.3s;
+}
+input:checked + .slider { background: var(--fb-blue); }
+input:checked + .slider:before { transform: translateX(16px); }
+
+/* ========== ADS BOX ========== */
+.ads-box { background: #fffbe6; border-color: #f0c030; }
+.ads-label { font-weight: bold; font-size: 12px; color: #8a6000; }
+
+/* ========== EMOJI PICKER ========== */
+#emoji-picker {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border: 1px solid var(--fb-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 500;
+    padding: 10px;
+}
+
+.emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 5px;
+}
+
+.emoji-grid span {
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    text-align: center;
+    border-radius: 3px;
+}
+
+.emoji-grid span:hover { background: var(--fb-blue-lighter); }
+
+/* ========== MODAL ========== */
+#modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#modal-overlay.hidden { display: none !important; }
+
+#modal-box {
+    background: white;
+    border: 2px solid var(--fb-blue);
+    border-radius: 4px;
+    width: 380px;
+    max-width: 90%;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    overflow: hidden;
+}
+
+#modal-title {
+    background: var(--fb-blue);
+    color: white;
+    padding: 10px 15px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+#modal-body {
+    padding: 15px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+#modal-footer {
+    padding: 10px 15px;
+    background: #f5f5f5;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ========== TOAST ========== */
+#toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 13px;
+    z-index: 3000;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+#toast.hidden { display: none; }
+
+/* Popular posts in sidebar */
+.sidebar-post-item {
+    font-size: 11px;
+    padding: 5px 0;
+    border-bottom: 1px dotted var(--fb-border);
+    cursor: pointer;
+    color: var(--fb-text);
+}
+
+.sidebar-post-item:last-child { border-bottom: none; }
+.sidebar-post-item:hover { color: var(--fb-blue); }
+
+.sidebar-comm-item {
+    font-size: 11px;
+    padding: 4px 0;
+    cursor: pointer;
+    color: var(--fb-blue);
+    border-bottom: 1px dotted var(--fb-border);
+}
+
+.sidebar-comm-item:last-child { border-bottom: none; }
+.sidebar-comm-item:hover { text-decoration: underline; }
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 820px) {
+    #left-sidebar, #right-sidebar { display: none; }
+    #main-layout { padding: 0 5px; }
+}
+
+@media (max-width: 600px) {
+    #topbar-search { display: none; }
+    .info-grid { grid-template-columns: 1fr; }
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.mt-8 { margin-top: 8px; }
