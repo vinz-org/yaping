@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Yaping - Jaringan Sosial</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Tahoma:wght@400;700&display=swap" rel="stylesheet">
@@ -52,18 +53,6 @@
                 <li><a href="#" onclick="switchToTab('settings'); return false;">⚙️ Pengaturan</a></li>
             </ul>
         </div>
-        <div class="sidebar-box" id="sidebar-stats-box">
-            <div class="sidebar-box-title">Statistik Saya</div>
-            <div class="sidebar-stat"><span>Postingan</span><strong id="sidebar-post-count">0</strong></div>
-            <div class="sidebar-stat"><span>Like Diberikan</span><strong id="sidebar-like-count">0</strong></div>
-            <div class="sidebar-stat"><span>Komunitas</span><strong id="sidebar-comm-count">3</strong></div>
-        </div>
-        <div class="sidebar-box">
-            <div class="sidebar-box-title">Teman Online</div>
-            <div class="friend-item"><span class="online-dot"></span> @qwertty</div>
-            <div class="friend-item"><span class="online-dot"></span> @dudememe</div>
-            <div class="friend-item offline"><span class="offline-dot"></span> @techguru</div>
-        </div>
     </div>
 
     <!-- CENTER CONTENT -->
@@ -103,7 +92,7 @@
                     </div>
                     <div class="form-row">
                         <label>Kategori</label>
-                        <select id="newCommunityCategory">
+                        <select id="newCommunityCategory" title="Kategori Komunitas">
                             <option value="🎮">🎮 Gaming</option>
                             <option value="💻">💻 Teknologi</option>
                             <option value="😂">😂 Hiburan</option>
@@ -184,6 +173,20 @@
                     <button class="secondary-btn" onclick="showProfileSection('info', document.querySelector('.profile-tab-btn'))">Batal</button>
                 </div>
             </div>
+
+            <!-- Popular Posts -->
+            <div class="content-box">
+                <div class="box-title">📢 Postingan Populer</div>
+                <div id="popular-posts-sidebar">
+                    <div class="sidebar-empty">Belum ada postingan</div>
+                </div>
+            </div>
+
+            <!-- Popular Communities -->
+            <div class="content-box">
+                <div class="box-title">👥 Komunitas Populer</div>
+                <div id="popular-comms-sidebar"></div>
+            </div>
         </div>
 
         <!-- TAB: SETTINGS -->
@@ -195,13 +198,13 @@
                     <div class="settings-row">
                         <span>Mode Gelap</span>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
+                            <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()" title="Mode Gelap">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="settings-row">
                         <span>Ukuran Font</span>
-                        <select onchange="changeFontSize(this.value)">
+                        <select onchange="changeFontSize(this.value)" title="Ukuran Font">
                             <option value="14">Kecil</option>
                             <option value="16" selected>Normal</option>
                             <option value="18">Besar</option>
@@ -213,14 +216,14 @@
                     <div class="settings-row">
                         <span>Profil Publik</span>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="public-toggle" checked>
+                            <input type="checkbox" id="public-toggle" checked title="Profil Publik">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="settings-row">
                         <span>Tampilkan Status Online</span>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="online-toggle" checked>
+                            <input type="checkbox" id="online-toggle" checked title="Tampilkan Status Online">
                             <span class="slider"></span>
                         </label>
                     </div>
@@ -248,21 +251,6 @@
 
     <!-- RIGHT SIDEBAR -->
     <div id="right-sidebar">
-        <div class="sidebar-box">
-            <div class="sidebar-box-title">📢 Postingan Populer</div>
-            <div id="popular-posts-sidebar">
-                <div class="sidebar-empty">Belum ada postingan</div>
-            </div>
-        </div>
-        <div class="sidebar-box">
-            <div class="sidebar-box-title">👥 Komunitas Populer</div>
-            <div id="popular-comms-sidebar"></div>
-        </div>
-        <div class="sidebar-box ads-box">
-            <div class="ads-label">Yaping Premium</div>
-            <p style="font-size:11px;color:#555;margin:5px 0;">Nikmati pengalaman tanpa batas dengan Yaping Premium!</p>
-            <button class="primary-btn" style="width:100%;margin-top:8px;font-size:11px;" onclick="alert('Fitur akan segera hadir!')">Coba Gratis</button>
-        </div>
     </div>
 
 </div>
