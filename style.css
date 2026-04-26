@@ -22,6 +22,61 @@
     --fb-box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
 }
 
+/* File Preview */
+.file-preview {
+    margin: 8px 0;
+    padding: 8px;
+    background: var(--fb-blue-lighter);
+    border-radius: 3px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Post Media */
+.post-card img, .post-card video {
+    max-width: 100%;
+    border-radius: 3px;
+    display: block;
+    margin: 8px 0;
+}
+
+/* Comment Section */
+.comment-section {
+    padding: 8px 12px;
+    background: #fafbff;
+    border-top: 1px solid var(--fb-border);
+}
+.comment-section input {
+    padding: 4px 8px;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+}
+
+/* Profile Photo Upload */
+#profilePhotoUploadRow { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--fb-border); }
+
+/* Stats Display */
+.comm-detail-meta span { margin-right: 8px; }
+
+/* Delete Button */
+.post-footer .post-delete-btn {
+    margin-left: auto;
+    padding: 3px 8px;
+    background: none;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--fb-red);
+    font-family: 'Tahoma', sans-serif;
+}
+.post-footer .post-delete-btn:hover { background: #ffebee; }
+
 /* DARK MODE */
 body.dark-mode {
     --fb-blue-bg: #1a1f2e;
