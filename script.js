@@ -1,8 +1,9 @@
 /* ============================================
-   YAPING - script.js (Full Features)
-   + Upload Foto/Video Post
-   + Hapus Post
-   + Upload Foto Profil (PNG/JPEG/GIF)
+   YAPING - script.js (FIXED + NEW FEATURES)
+   ✓ Profil Photo Fixed
+   ✓ Upload Media Fixed  
+   ✓ + Komentar System
+   ✓ + Community Statistics
    Compatible with Facebook 2008 Style CSS
    ============================================ */
 
@@ -14,8 +15,10 @@ var currentUser = '@user';
 var lastCommunityCreate = 0;
 var emojiTargetInput = 'postInput';
 var currentViewedCommunity = null;
-var profilePhoto = localStorage.getItem('yaping_profilePhoto_' + currentUser) || null;
-var MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB limit for localStorage
+var profilePhoto = null;
+
+// File upload config
+var MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 var ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
 var ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
 
@@ -28,6 +31,7 @@ function initApp() {
     updateProfilePhotoDisplay();
     setupEventListeners();
     
+    // Dark mode
     if (localStorage.getItem('yaping_darkMode') === 'true') {
         document.body.classList.add('dark-mode');
         var toggle = document.getElementById('dark-mode-toggle');
@@ -37,6 +41,7 @@ function initApp() {
 
 function loadData() {
     try {
+        // Communities
         var c = localStorage.getItem('yaping_communities');
         communities = c ? JSON.parse(c) : [
             { id: 1, name: 'Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now() },
@@ -44,19 +49,23 @@ function loadData() {
             { id: 3, name: 'Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000 }
         ];
         
+        // Posts
         var p = localStorage.getItem('yaping_communityPosts');
         communityPosts = p ? JSON.parse(p) : {};
         
+        // Joined
         var j = localStorage.getItem('yaping_joinedCommunities');
         joinedCommunities = j ? JSON.parse(j) : [1];
         
+        // Cooldown
         var lcc = localStorage.getItem('yaping_lastCommCreate');
         lastCommunityCreate = lcc ? parseInt(lcc) : 0;
         
-        // Load profile photo
+        // Profile photo
         profilePhoto = localStorage.getItem('yaping_profilePhoto_' + currentUser);
+        
     } catch(e) {
-        console.log('Load data error:', e);
+        console.log('Load error:', e);
         communities = [];
         communityPosts = {};
         joinedCommunities = [];
@@ -64,6 +73,7 @@ function loadData() {
 }
 
 function setupEventListeners() {
+    // Search
     var searchInput = document.getElementById('searchInput');
     if (searchInput) {
         searchInput.addEventListener('keypress', function(e) {
@@ -71,28 +81,22 @@ function setupEventListeners() {
         });
     }
     
-    // Profile photo upload listener
-    var profilePhotoInput = document.getElementById('profilePhotoInput');
-    if (profilePhotoInput) {
-        profilePhotoInput.addEventListener('change', handleProfilePhotoUpload);
-    }
-    
+    // Emoji picker close on outside click
     document.addEventListener('click', function(e) {
         var picker = document.getElementById('emoji-picker');
         if (picker && !picker.contains(e.target)) {
-            var isEmojiBtn = false;
+            var isBtn = false;
             var el = e.target;
             while (el) {
-                if (el.getAttribute && el.getAttribute('onclick') && el.getAttribute('onclick').indexOf('addEmoji') !== -1) {
-                    isEmojiBtn = true;
-                    break;
-                }
+                var onclick = el.getAttribute ? el.getAttribute('onclick') : '';
+                if (onclick && onclick.indexOf('addEmoji') !== -1) { isBtn = true; break; }
                 el = el.parentNode;
             }
-            if (!isEmojiBtn) picker.classList.add('hidden');
+            if (!isBtn) picker.classList.add('hidden');
         }
     });
     
+    // Init
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initApp);
     } else {
@@ -125,11 +129,11 @@ function switchToTab(tabName) {
     return false;
 }
 
-// ===== FILE UPLOAD UTILS =====
+// ===== FILE UPLOAD HELPERS =====
 function readFileAsBase64(file, callback) {
     var reader = new FileReader();
     reader.onload = function(e) { callback(e.target.result); };
-    reader.onerror = function() { showToast('Error membaca file'); };
+    reader.onerror = function() { showToast('Gagal membaca file'); };
     reader.readAsDataURL(file);
 }
 
@@ -137,19 +141,17 @@ function validateFile(file, isProfile) {
     if (!file) return { valid: false, error: 'Pilih file dulu' };
     
     if (isProfile) {
-        // Profile photo: only images
         if (ALLOWED_IMAGE_TYPES.indexOf(file.type) === -1) {
-            return { valid: false, error: 'Format harus PNG, JPEG, atau GIF' };
+            return { valid: false, error: 'Format: PNG, JPEG, atau GIF' };
         }
     } else {
-        // Post media: images or videos
         if (ALLOWED_IMAGE_TYPES.indexOf(file.type) === -1 && ALLOWED_VIDEO_TYPES.indexOf(file.type) === -1) {
-            return { valid: false, error: 'Format harus PNG, JPEG, GIF, MP4, atau WebM' };
+            return { valid: false, error: 'Format: PNG, JPEG, GIF, MP4, atau WebM' };
         }
     }
     
     if (file.size > MAX_FILE_SIZE) {
-        return { valid: false, error: 'Ukuran maksimal 2MB' };
+        return { valid: false, error: 'Maksimal 2MB' };
     }
     
     return { valid: true };
@@ -166,39 +168,62 @@ function compressImage(base64, maxWidth, callback) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         callback(canvas.toDataURL('image/jpeg', 0.8));
     };
+    img.onerror = function() { callback(base64); };
     img.src = base64;
 }
 
-// ===== PROFILE PHOTO UPLOAD =====
-function handleProfilePhotoUpload(e) {
-    var file = e.target.files[0];
-    if (!file) return;
-    
-    var validation = validateFile(file, true);
-    if (!validation.valid) {
-        showToast(validation.error);
-        e.target.value = '';
-        return;
-    }
-    
-    showToast('Memproses foto...');
-    
-    readFileAsBase64(file, function(base64) {
-        // Compress if needed
-        if (file.type !== 'image/gif') {
-            compressImage(base64, 400, function(compressed) {
-                saveProfilePhoto(compressed);
-            });
-        } else {
-            // GIF: keep original but check size
-            if (base64.length > 3000000) {
-                showToast('GIF terlalu besar, coba yang lebih kecil');
-                e.target.value = '';
-                return;
+// ===== PROFILE PHOTO =====
+function updateProfilePhotoDisplay() {
+    // Update all avatar elements
+    var selectors = ['.profile-avatar-big', '.sidebar-profile-pic'];
+    for (var s = 0; s < selectors.length; s++) {
+        var el = document.querySelector(selectors[s]);
+        if (el) {
+            if (profilePhoto) {
+                el.innerHTML = '<img src="' + profilePhoto + '" style="width:100%;height:100%;object-fit:cover;border-radius:3px;" alt="Profile">';
+            } else {
+                el.innerHTML = '👤';
             }
-            saveProfilePhoto(base64);
         }
-    });
+    }
+}
+
+function triggerProfilePhotoUpload() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/gif';
+    input.style.display = 'none';
+    
+    input.onchange = function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        
+        var validation = validateFile(file, true);
+        if (!validation.valid) {
+            showToast(validation.error);
+            return;
+        }
+        
+        showToast('Memproses...');
+        
+        readFileAsBase64(file, function(base64) {
+            if (file.type !== 'image/gif') {
+                compressImage(base64, 400, function(compressed) {
+                    saveProfilePhoto(compressed);
+                });
+            } else {
+                if (base64.length > 3000000) {
+                    showToast('GIF terlalu besar');
+                    return;
+                }
+                saveProfilePhoto(base64);
+            }
+        });
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(function() { input.remove(); }, 1000);
 }
 
 function saveProfilePhoto(base64) {
@@ -208,29 +233,7 @@ function saveProfilePhoto(base64) {
         updateProfilePhotoDisplay();
         showToast('✅ Foto profil diperbarui!');
     } catch(e) {
-        showToast('❌ Gagal simpan: penyimpanan penuh');
-        console.log('Storage error:', e);
-    }
-}
-
-function updateProfilePhotoDisplay() {
-    var avatarBig = document.querySelector('.profile-avatar-big');
-    var avatarSidebar = document.querySelector('.sidebar-profile-pic');
-    var avatarPost = document.querySelectorAll('.post-avatar');
-    
-    var imgHtml = profilePhoto 
-        ? '<img src="' + profilePhoto + '" style="width:100%;height:100%;object-fit:cover;border-radius:3px;">'
-        : '👤';
-    
-    if (avatarBig) avatarBig.innerHTML = imgHtml;
-    if (avatarSidebar) avatarSidebar.innerHTML = imgHtml;
-    
-    // Update post avatars (for current user posts)
-    for (var i = 0; i < avatarPost.length; i++) {
-        var post = avatarPost[i].closest('.post-card') || avatarPost[i].closest('.post-item');
-        if (post && post.innerHTML.indexOf(currentUser) !== -1) {
-            avatarPost[i].innerHTML = imgHtml;
-        }
+        showToast('❌ Gagal: penyimpanan penuh');
     }
 }
 
@@ -243,83 +246,69 @@ function removeProfilePhoto() {
     }
 }
 
-// ===== POST: FILE UPLOAD =====
-function triggerPostFileInput(target) {
-    var inputId = 'postFileInput_' + (target === 'community' ? currentViewedCommunity : 'home');
-    var existing = document.getElementById(inputId);
-    if (existing) existing.remove();
+// ===== POST MEDIA UPLOAD =====
+function triggerPostFileUpload(target) {
+    // target: 'home' or 'community'
+    var commId = target === 'community' ? currentViewedCommunity : null;
+    var previewId = 'filePreview_' + (commId || 'home');
     
     var input = document.createElement('input');
     input.type = 'file';
-    input.id = inputId;
     input.accept = 'image/png,image/jpeg,image/gif,video/mp4,video/webm';
     input.style.display = 'none';
     
     input.onchange = function(e) {
-        handlePostFileUpload(e, target);
+        var file = e.target.files[0];
+        if (!file) return;
+        
+        var validation = validateFile(file, false);
+        if (!validation.valid) {
+            showToast(validation.error);
+            return;
+        }
+        
+        showToast('Memproses...');
+        
+        readFileAsBase64(file, function(base64) {
+            // Show preview
+            var previewEl = document.getElementById(previewId);
+            if (!previewEl) {
+                previewEl = document.createElement('div');
+                previewEl.id = previewId;
+                previewEl.className = 'file-preview';
+                previewEl.style.cssText = 'margin:8px 0;padding:8px;background:var(--fb-blue-lighter);border-radius:3px;font-size:11px;display:flex;align-items:center;gap:8px;';
+                
+                var textareaId = target === 'community' ? 'communityPostInput' : 'postInput';
+                var textarea = document.getElementById(textareaId);
+                if (textarea && textarea.parentNode) {
+                    textarea.parentNode.insertBefore(previewEl, textarea.nextSibling);
+                }
+            }
+            
+            var isVideo = ALLOWED_VIDEO_TYPES.indexOf(file.type) !== -1;
+            var fname = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
+            
+            previewEl.innerHTML = (isVideo ? '🎬' : '🖼️') + ' ' + fname + 
+                ' <button class="option-btn" style="padding:2px 6px;font-size:10px;" onclick="removeFilePreview(\'' + previewId + '\')">✕</button>';
+            previewEl.dataset.base64 = base64;
+            previewEl.dataset.type = file.type;
+        });
     };
     
     document.body.appendChild(input);
     input.click();
+    setTimeout(function() { input.remove(); }, 1000);
 }
 
-function handlePostFileUpload(e, target) {
-    var file = e.target.files[0];
-    if (!file) return;
-    
-    var validation = validateFile(file, false);
-    if (!validation.valid) {
-        showToast(validation.error);
-        e.target.value = '';
-        return;
-    }
-    
-    var inputId = target === 'community' ? 'communityPostInput' : 'postInput';
-    var previewId = 'filePreview_' + (target === 'community' ? currentViewedCommunity : 'home');
-    
-    showToast('Memproses file...');
-    
-    readFileAsBase64(file, function(base64) {
-        // Show preview
-        var previewEl = document.getElementById(previewId);
-        if (!previewEl) {
-            previewEl = document.createElement('div');
-            previewEl.id = previewId;
-            previewEl.className = 'file-preview';
-            previewEl.style.cssText = 'margin:8px 0;padding:8px;background:var(--fb-blue-lighter);border-radius:3px;font-size:11px;';
-            
-            var input = target === 'community' ? document.getElementById('communityPostInput') : document.getElementById('postInput');
-            if (input && input.parentNode) {
-                input.parentNode.insertBefore(previewEl, input.nextSibling);
-            }
-        }
-        
-        var isVideo = ALLOWED_VIDEO_TYPES.indexOf(file.type) !== -1;
-        var fileName = file.name.length > 20 ? file.name.substring(0, 17) + '...' : file.name;
-        
-        previewEl.innerHTML = (isVideo ? '🎬 ' : '🖼️ ') + fileName + 
-            ' <button class="option-btn" style="padding:2px 6px;font-size:10px;margin-left:8px;" onclick="removePostFilePreview(\'' + previewId + '\')">✕ Hapus</button>';
-        
-        // Store reference
-        previewEl.dataset.base64 = base64;
-        previewEl.dataset.type = file.type;
-    });
-    
-    e.target.value = '';
-}
-
-function removePostFilePreview(previewId) {
+function removeFilePreview(previewId) {
     var el = document.getElementById(previewId);
     if (el) el.remove();
 }
 
-function getPostFileData(previewId) {
+function getFileData(previewId) {
     var el = document.getElementById(previewId);
-    if (!el) return null;
-    return {
-        base64: el.dataset.base64,
-        type: el.dataset.type
-    };
+    if (!el || !el.dataset.base64) return null;
+    return { base64: el.dataset.base64, type: el.dataset.type };
 }
 
 // ===== COMMUNITIES =====
@@ -344,7 +333,7 @@ function renderCommunities(filter) {
     for (var k = 0; k < filtered.length; k++) {
         var c = filtered[k];
         var isMember = joinedCommunities.indexOf(c.id) !== -1;
-        var memberBadge = isMember ? ' <span style="color:var(--fb-green)">[Anggota]</span>' : '';
+        var badge = isMember ? ' <span style="color:var(--fb-green)">[Anggota]</span>' : '';
         var btn = isMember 
             ? '<button class="primary-btn" onclick="viewCommunity(' + c.id + ')">Lihat</button>'
             : '<button class="primary-btn" onclick="joinCommunity(' + c.id + ')">Gabung</button>';
@@ -352,7 +341,7 @@ function renderCommunities(filter) {
         html += '<li class="comm-list-item">' +
             '<div class="comm-icon">' + c.category + '</div>' +
             '<div class="comm-info">' +
-                '<div class="comm-name" onclick="viewCommunity(' + c.id + ')">' + escapeHtml(c.name) + memberBadge + '</div>' +
+                '<div class="comm-name" onclick="viewCommunity(' + c.id + ')">' + escapeHtml(c.name) + badge + '</div>' +
                 '<div class="comm-meta">' + escapeHtml(c.desc) + ' | ' + c.members + ' anggota</div>' +
             '</div>' +
             '<div class="comm-actions">' + btn + '</div>' +
@@ -394,7 +383,8 @@ function addCommunity() {
         category: category,
         members: 1,
         owner: currentUser,
-        createdAt: now
+        createdAt: now,
+        stats: { totalPosts: 0, totalLikes: 0, totalComments: 0, joinedAt: now }
     };
     
     communities.unshift(newComm);
@@ -410,11 +400,7 @@ function addCommunity() {
     renderCommunities('all');
     showToast('Komunitas "' + name + '" berhasil dibuat!');
     
-    setTimeout(function() {
-        if (cooldownInfo && cooldownInfo.textContent.indexOf('Komunitas') !== -1) {
-            cooldownInfo.textContent = '';
-        }
-    }, 3000);
+    setTimeout(function() { if (cooldownInfo && cooldownInfo.textContent.indexOf('Komunitas') !== -1) cooldownInfo.textContent = ''; }, 3000);
 }
 
 function joinCommunity(commId) {
@@ -424,6 +410,9 @@ function joinCommunity(commId) {
     if (!comm) return;
     
     comm.members++;
+    if (!comm.stats) comm.stats = { totalPosts: 0, totalLikes: 0, totalComments: 0, joinedAt: Date.now() };
+    comm.stats.joinedAt = Date.now();
+    
     joinedCommunities.push(commId);
     
     saveCommunities();
@@ -454,14 +443,22 @@ function viewCommunity(commId) {
     
     var isMember = joinedCommunities.indexOf(commId) !== -1;
     
+    // Stats display
+    var stats = comm.stats || { totalPosts: 0, totalLikes: 0, totalComments: 0 };
+    var statsHtml = '<div style="display:flex;gap:12px;font-size:11px;color:var(--fb-text-light);margin:8px 0;">' +
+        '<span>📊 ' + stats.totalPosts + ' postingan</span>' +
+        '<span>❤️ ' + stats.totalLikes + ' like</span>' +
+        '<span>💬 ' + stats.totalComments + ' komentar</span>' +
+    '</div>';
+    
     var postBox = '';
     if (isMember) {
         postBox = '<div class="content-box">' +
             '<div class="box-title">Buat Postingan</div>' +
             '<textarea id="communityPostInput" class="comm-post-input" placeholder="Tulis untuk ' + escapeHtml(comm.name) + '..."></textarea>' +
-            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0;">' +
                 '<button class="option-btn" onclick="addEmoji(\'communityPostInput\')" style="font-size:11px;">😊 Emoji</button>' +
-                '<button class="option-btn" onclick="triggerPostFileInput(\'community\')" style="font-size:11px;">📷 Foto/Video</button>' +
+                '<button class="option-btn" onclick="triggerPostFileUpload(\'community\')" style="font-size:11px;">📷 Foto/Video</button>' +
                 '<button class="primary-btn" onclick="submitCommunityPost(' + commId + ')">Bagikan</button>' +
             '</div>' +
             '<div id="filePreview_' + commId + '"></div>' +
@@ -487,23 +484,25 @@ function viewCommunity(commId) {
                 '<div class="comm-detail-icon">' + comm.category + '</div>' +
                 '<div class="comm-detail-info">' +
                     '<div class="comm-detail-name">' + escapeHtml(comm.name) + '</div>' +
-                    '<div style="font-size:12px;color:var(--fb-text-light);margin-bottom:8px;">' + escapeHtml(comm.desc) + '</div>' +
+                    '<div style="font-size:12px;color:var(--fb-text-light);margin-bottom:4px;">' + escapeHtml(comm.desc) + '</div>' +
                     '<div class="comm-detail-meta">' + comm.members + ' anggota | Oleh ' + escapeHtml(comm.owner) + memberText + '</div>' +
+                    statsHtml +
                 '</div>' +
                 joinBtn +
             '</div>' +
         '</div>' +
         postBox +
         '<div class="content-box">' +
-            '<div class="box-title">Diskusi Terbaru</div>' +
+            '<div class="box-title">💬 Diskusi Terbaru</div>' +
             '<div id="comm-posts-feed">' + postsHTML + '</div>' +
         '</div>';
 }
 
+// ===== POST SUBMIT =====
 function submitCommunityPost(commId) {
     var input = document.getElementById('communityPostInput');
     var text = input ? input.value.trim() : '';
-    var fileData = getPostFileData('filePreview_' + commId);
+    var fileData = getFileData('filePreview_' + commId);
     
     if (!text && !fileData) { showToast('Tulis sesuatu atau upload media!'); return; }
     
@@ -518,18 +517,24 @@ function submitCommunityPost(commId) {
         media: fileData ? { base64: fileData.base64, type: fileData.type } : null,
         likes: 0,
         likedBy: [],
+        comments: [],
         createdAt: Date.now()
     };
     
     if (!communityPosts[commId]) communityPosts[commId] = [];
     communityPosts[commId].unshift(newPost);
     
+    // Update stats
+    if (!comm.stats) comm.stats = { totalPosts: 0, totalLikes: 0, totalComments: 0 };
+    comm.stats.totalPosts++;
+    
     saveCommunityPosts();
+    saveCommunities();
     
     if (input) input.value = '';
-    removePostFilePreview('filePreview_' + commId);
+    removeFilePreview('filePreview_' + commId);
     
-    showToast('Postingan dibagikan ke ' + comm.name);
+    showToast('Postingan dibagikan!');
     
     var feedEl = document.getElementById('comm-posts-feed');
     if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
@@ -537,6 +542,7 @@ function submitCommunityPost(commId) {
     if (comm.owner !== currentUser) addNotification(currentUser + ' memposting di ' + comm.name, 'comm');
 }
 
+// ===== RENDER POSTS WITH COMMENTS =====
 function renderCommunityPosts(commId) {
     var posts = communityPosts[commId] || [];
     if (posts.length === 0) return '<div class="sidebar-empty">Belum ada diskusi. Jadilah yang pertama!</div>';
@@ -545,9 +551,10 @@ function renderCommunityPosts(commId) {
     for (var i = 0; i < posts.length; i++) {
         var p = posts[i];
         var timeAgo = formatTimeAgo(p.createdAt);
-        var isLiked = p.likedBy.indexOf(currentUser) !== -1;
+        var isLiked = p.likedBy && p.likedBy.indexOf(currentUser) !== -1;
         var isOwner = p.author === currentUser;
         
+        // Media
         var mediaHtml = '';
         if (p.media && p.media.base64) {
             if (p.media.type.indexOf('video') !== -1) {
@@ -557,9 +564,31 @@ function renderCommunityPosts(commId) {
             }
         }
         
-        var deleteBtn = isOwner 
-            ? '<button class="post-delete-btn" onclick="deletePost(' + commId + ',' + p.id + ',true)" style="margin-left:auto;">🗑️ Hapus</button>'
+        // Comments
+        var commentsHtml = '';
+        if (p.comments && p.comments.length > 0) {
+            commentsHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--fb-border);">';
+            for (var c = 0; c < p.comments.length; c++) {
+                var cm = p.comments[c];
+                var canDelete = cm.author === currentUser || isOwner;
+                commentsHtml += '<div style="font-size:12px;margin:4px 0;padding:6px 8px;background:var(--fb-blue-bg);border-radius:3px;">' +
+                    '<strong>' + escapeHtml(cm.author) + '</strong>: ' + escapeHtml(cm.text) + 
+                    ' <span style="color:var(--fb-text-light);font-size:10px;">' + formatTimeAgo(cm.createdAt) + '</span>' +
+                    (canDelete ? ' <button class="option-btn" style="padding:1px 4px;font-size:9px;" onclick="deleteComment(' + commId + ',' + p.id + ',' + cm.id + ')">✕</button>' : '') +
+                '</div>';
+            }
+            commentsHtml += '</div>';
+        }
+        
+        // Comment input (only for members)
+        var commentInput = joinedCommunities.indexOf(commId) !== -1 
+            ? '<div style="margin-top:8px;display:flex;gap:4px;">' +
+                '<input type="text" id="commentInput_' + p.id + '" placeholder="Tulis komentar..." style="flex:1;padding:4px 8px;border:1px solid var(--fb-border);border-radius:3px;font-size:11px;">' +
+                '<button class="option-btn" style="padding:4px 8px;font-size:11px;" onclick="submitComment(' + commId + ',' + p.id + ')">Kirim</button>' +
+              '</div>'
             : '';
+        
+        var deleteBtn = isOwner ? '<button class="post-delete-btn" onclick="deletePost(' + commId + ',' + p.id + ',true)" style="margin-left:auto;">🗑️</button>' : '';
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
             '<div class="post-card-header">' +
@@ -570,19 +599,31 @@ function renderCommunityPosts(commId) {
             mediaHtml +
             '<div class="post-footer">' +
                 '<div class="post-actions-left">' +
-                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',' + p.id + ')">' + 
-                        (isLiked ? '❤️' : '🤍') + ' ' + p.likes + '</button>' +
-                    '<button class="comment-btn" onclick="showToast(\'Fitur komentar segera hadir!\')">Komentar</button>' +
+                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likePost(' + commId + ',' + p.id + ')">' + (isLiked ? '❤️' : '🤍') + ' ' + p.likes + '</button>' +
+                    '<button class="comment-btn" onclick="toggleCommentInput(' + p.id + ')">💬 ' + (p.comments ? p.comments.length : 0) + '</button>' +
                 '</div>' +
-                '<button class="share-btn" onclick="showToast(\'Link disalin!\')">Bagikan</button>' +
+                '<button class="share-btn" onclick="showToast(\'Link disalin!\')">🔗</button>' +
                 deleteBtn +
             '</div>' +
+            '<div id="commentSection_' + p.id + '" class="comment-section" style="display:none;">' + commentInput + commentsHtml + '</div>' +
         '</div>';
     }
     return html;
 }
 
-function likeCommunityPost(commId, postId) {
+// ===== COMMENTS SYSTEM =====
+function toggleCommentInput(postId) {
+    var section = document.getElementById('commentSection_' + postId);
+    if (section) {
+        section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+function submitComment(commId, postId) {
+    var input = document.getElementById('commentInput_' + postId);
+    var text = input ? input.value.trim() : '';
+    if (!text) { showToast('Tulis komentar dulu!'); return; }
+    
     var posts = communityPosts[commId];
     if (!posts) return;
     
@@ -592,11 +633,106 @@ function likeCommunityPost(commId, postId) {
     }
     if (!post) return;
     
-    var idx = post.likedBy.indexOf(currentUser);
-    if (idx === -1) { post.likes++; post.likedBy.push(currentUser); }
-    else { post.likes--; post.likedBy.splice(idx, 1); }
+    if (!post.comments) post.comments = [];
+    
+    post.comments.push({
+        id: Date.now(),
+        author: currentUser,
+        text: text,
+        createdAt: Date.now()
+    });
+    
+    // Update stats
+    var comm = getCommunityById(commId);
+    if (comm && comm.stats) comm.stats.totalComments++;
     
     saveCommunityPosts();
+    saveCommunities();
+    
+    if (input) input.value = '';
+    
+    // Re-render
+    var feedEl = document.getElementById('comm-posts-feed');
+    if (feedEl && currentViewedCommunity === commId) {
+        feedEl.innerHTML = renderCommunityPosts(commId);
+        // Re-open comment section
+        var section = document.getElementById('commentSection_' + postId);
+        if (section) section.style.display = 'block';
+    }
+    
+    showToast('Komentar dikirim!');
+    
+    // Notify post author if not self
+    if (post.author !== currentUser) {
+        addNotification(currentUser + ' mengomentari postinganmu', 'comment');
+    }
+}
+
+function deleteComment(commId, postId, commentId) {
+    if (!confirm('Hapus komentar ini?')) return;
+    
+    var posts = communityPosts[commId];
+    if (!posts) return;
+    
+    var post = null;
+    for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === postId) { post = posts[i]; break; }
+    }
+    if (!post || !post.comments) return;
+    
+    var idx = -1;
+    for (var j = 0; j < post.comments.length; j++) {
+        if (post.comments[j].id === commentId) { idx = j; break; }
+    }
+    if (idx === -1) return;
+    
+    post.comments.splice(idx, 1);
+    
+    // Update stats
+    var comm = getCommunityById(commId);
+    if (comm && comm.stats && comm.stats.totalComments > 0) comm.stats.totalComments--;
+    
+    saveCommunityPosts();
+    saveCommunities();
+    
+    // Re-render
+    var feedEl = document.getElementById('comm-posts-feed');
+    if (feedEl && currentViewedCommunity === commId) {
+        feedEl.innerHTML = renderCommunityPosts(commId);
+    }
+    
+    showToast('Komentar dihapus');
+}
+
+// ===== LIKE SYSTEM =====
+function likePost(commId, postId) {
+    var posts = communityPosts[commId];
+    if (!posts) return;
+    
+    var post = null;
+    for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === postId) { post = posts[i]; break; }
+    }
+    if (!post) return;
+    
+    if (!post.likedBy) post.likedBy = [];
+    
+    var idx = post.likedBy.indexOf(currentUser);
+    if (idx === -1) {
+        post.likes = (post.likes || 0) + 1;
+        post.likedBy.push(currentUser);
+        // Update stats
+        var comm = getCommunityById(commId);
+        if (comm && comm.stats) comm.stats.totalLikes++;
+    } else {
+        post.likes = (post.likes || 0) - 1;
+        post.likedBy.splice(idx, 1);
+        var comm = getCommunityById(commId);
+        if (comm && comm.stats && comm.stats.totalLikes > 0) comm.stats.totalLikes--;
+    }
+    
+    saveCommunityPosts();
+    saveCommunities();
     
     if (currentViewedCommunity === commId) {
         var feedEl = document.getElementById('comm-posts-feed');
@@ -604,82 +740,31 @@ function likeCommunityPost(commId, postId) {
     }
 }
 
-// ===== HOME FEED =====
-function submitPost() {
-    var input = document.getElementById('postInput');
-    var text = input ? input.value.trim() : '';
-    var fileData = getPostFileData('filePreview_home');
-    
-    if (!text && !fileData) { showToast('Tulis sesuatu atau upload media!'); return; }
-    
-    var newPost = {
-        id: Date.now(),
-        author: currentUser,
-        content: text,
-        media: fileData ? { base64: fileData.base64, type: fileData.type } : null,
-        likes: 0,
-        likedBy: [],
-        createdAt: Date.now()
-    };
-    
-    // Simpan ke localStorage (bisa dikembangkan)
-    showToast('Postingan dibagikan!');
-    if (input) input.value = '';
-    removePostFilePreview('filePreview_home');
-    
-    renderFeed();
-}
-
-function renderFeed() {
-    var feed = document.getElementById('feed');
-    if (!feed) return;
-    
-    // Placeholder + demo post with media
-    if (!feed.innerHTML.trim() || feed.innerHTML.indexOf('Selamat datang') !== -1) {
-        feed.innerHTML = 
-            '<div class="post-card">' +
-                '<div class="post-card-header"><span class="post-username">@user</span><span class="post-timestamp">Baru saja</span></div>' +
-                '<div class="post-body">Selamat datang di Yaping! 👋 Mulai bagikan pikiranmu, upload foto/video, atau gabung komunitas menarik.</div>' +
-                '<div class="post-footer">' +
-                    '<div class="post-actions-left">' +
-                        '<button class="like-btn" onclick="showToast(\'Terima kasih!\')">🤍 0</button>' +
-                        '<button class="comment-btn" onclick="showToast(\'Komentar...\')">Komentar</button>' +
-                    '</div>' +
-                    '<button class="share-btn" onclick="showToast(\'Dibagikan!\')">Bagikan</button>' +
-                    '<button class="post-delete-btn" onclick="deletePost(null,1,false)">🗑️ Hapus</button>' +
-                '</div>' +
-            '</div>' +
-            '<div class="post-card">' +
-                '<div class="post-card-header"><span class="post-username">@admin</span><span class="post-timestamp">2j lalu</span></div>' +
-                '<div class="post-body">Coba fitur upload foto baru! 📷✨</div>' +
-                '<div style="margin:8px 0;"><img src="https://via.placeholder.com/400x300/e8edf5/3b5998?text=Demo+Foto" style="max-width:100%;border-radius:3px;"></div>' +
-                '<div class="post-footer">' +
-                    '<div class="post-actions-left">' +
-                        '<button class="like-btn" onclick="this.classList.toggle(\'liked\');this.textContent=(this.classList.contains(\'liked\')?\'❤️\':\'🤍\')+\' 1\'">🤍 1</button>' +
-                        '<button class="comment-btn">Komentar</button>' +
-                    '</div>' +
-                    '<button class="share-btn">Bagikan</button>' +
-                '</div>' +
-            '</div>';
-    }
-}
-
 // ===== DELETE POST =====
 function deletePost(commId, postId, isCommunity) {
-    if (!confirm('Hapus postingan ini? Tindakan ini tidak bisa dibatalkan.')) return;
+    if (!confirm('Hapus postingan ini?')) return;
     
     if (isCommunity) {
         var posts = communityPosts[commId];
         if (!posts) return;
         
-        var idx = -1;
+        var post = null, idx = -1;
         for (var i = 0; i < posts.length; i++) {
-            if (posts[i].id === postId) { idx = i; break; }
+            if (posts[i].id === postId) { post = posts[i]; idx = i; break; }
         }
-        if (idx === -1) return;
+        if (idx === -1 || !post) return;
+        
+        // Update stats: subtract likes/comments
+        var comm = getCommunityById(commId);
+        if (comm && comm.stats) {
+            if (comm.stats.totalPosts > 0) comm.stats.totalPosts--;
+            if (comm.stats.totalLikes >= (post.likes || 0)) comm.stats.totalLikes -= (post.likes || 0);
+            if (comm.stats.totalComments >= (post.comments ? post.comments.length : 0)) comm.stats.totalComments -= (post.comments ? post.comments.length : 0);
+        }
         
         posts.splice(idx, 1);
         saveCommunityPosts();
+        saveCommunities();
         
         if (currentViewedCommunity === commId) {
             var feedEl = document.getElementById('comm-posts-feed');
@@ -687,20 +772,53 @@ function deletePost(commId, postId, isCommunity) {
         }
         showToast('Postingan dihapus');
     } else {
-        // Home feed delete (demo)
         showToast('Postingan dihapus');
         renderFeed();
     }
 }
 
-// ===== VIEW MEDIA FULLSCREEN =====
+// ===== MEDIA FULLSCREEN =====
 function viewMediaFull(base64) {
     var isVideo = base64.indexOf('video') !== -1;
     var content = isVideo 
         ? '<video src="' + base64 + '" controls style="max-width:100%;max-height:70vh;"></video>'
         : '<img src="' + base64 + '" style="max-width:100%;max-height:70vh;">';
-    
     showModal('Lihat Media', content);
+}
+
+// ===== HOME FEED =====
+function submitPost() {
+    var input = document.getElementById('postInput');
+    var text = input ? input.value.trim() : '';
+    var fileData = getFileData('filePreview_home');
+    
+    if (!text && !fileData) { showToast('Tulis sesuatu atau upload media!'); return; }
+    
+    showToast('Postingan dibagikan!');
+    if (input) input.value = '';
+    removeFilePreview('filePreview_home');
+    renderFeed();
+}
+
+function renderFeed() {
+    var feed = document.getElementById('feed');
+    if (!feed) return;
+    
+    if (!feed.innerHTML.trim() || feed.innerHTML.indexOf('Selamat datang') !== -1) {
+        feed.innerHTML = 
+            '<div class="post-card">' +
+                '<div class="post-card-header"><span class="post-username">@user</span><span class="post-timestamp">Baru saja</span></div>' +
+                '<div class="post-body">Selamat datang di Yaping! 👋 Upload foto/video, komen, dan gabung komunitas!</div>' +
+                '<div class="post-footer">' +
+                    '<div class="post-actions-left">' +
+                        '<button class="like-btn" onclick="showToast(\'Terima kasih!\')">🤍 0</button>' +
+                        '<button class="comment-btn" onclick="showToast(\'Komentar...\')">💬 0</button>' +
+                    '</div>' +
+                    '<button class="share-btn" onclick="showToast(\'Dibagikan!\')">🔗</button>' +
+                    '<button class="post-delete-btn" onclick="deletePost(null,1,false)">🗑️</button>' +
+                '</div>' +
+            '</div>';
+    }
 }
 
 // ===== PROFILE =====
@@ -708,14 +826,11 @@ function renderMyPosts() {
     var feed = document.getElementById('my-posts-feed');
     if (!feed) return;
     
-    // Collect user's community posts
     var myPosts = [];
     for (var commId in communityPosts) {
         var posts = communityPosts[commId];
         for (var i = 0; i < posts.length; i++) {
-            if (posts[i].author === currentUser) {
-                myPosts.push(posts[i]);
-            }
+            if (posts[i].author === currentUser) myPosts.push(posts[i]);
         }
     }
     
@@ -759,16 +874,11 @@ function updateProfileStats() {
         'sidebar-username': currentUser,
         'profile-username-display': currentUser
     };
-    
-    for (var key in els) {
-        var el = document.getElementById(key);
-        if (el) el.textContent = els[key];
-    }
+    for (var key in els) { var el = document.getElementById(key); if (el) el.textContent = els[key]; }
     
     var count = 0;
     for (var i = 0; i < communities.length; i++) if (communities[i].owner === currentUser) count++;
-    var el = document.getElementById('pi-comms');
-    if (el) el.textContent = count;
+    var el = document.getElementById('pi-comms'); if (el) el.textContent = count;
 }
 
 function showProfileSection(section, btn) {
@@ -777,10 +887,7 @@ function showProfileSection(section, btn) {
     if (btn) btn.classList.add('active');
     
     var secs = ['profile-info-section', 'profile-posts-section', 'profile-edit-section'];
-    for (var j = 0; j < secs.length; j++) {
-        var s = document.getElementById(secs[j]);
-        if (s) s.classList.add('hidden');
-    }
+    for (var j = 0; j < secs.length; j++) { var s = document.getElementById(secs[j]); if (s) s.classList.add('hidden'); }
     
     if (section === 'info') { var s = document.getElementById('profile-info-section'); if (s) s.classList.remove('hidden'); }
     if (section === 'posts') { var s = document.getElementById('profile-posts-section'); if (s) { s.classList.remove('hidden'); renderMyPosts(); } }
@@ -790,23 +897,25 @@ function showProfileSection(section, btn) {
         var b = document.getElementById('edit-bio'); if (b) b.value = '';
         var s = document.getElementById('profile-edit-section'); if (s) s.classList.remove('hidden');
         
-        // Show profile photo upload option
-        var editSection = document.getElementById('profile-edit-section');
-        if (editSection && !document.getElementById('profilePhotoUploadRow')) {
+        // Add photo upload row if not exists
+        if (!document.getElementById('profilePhotoUploadRow')) {
             var photoRow = document.createElement('div');
             photoRow.id = 'profilePhotoUploadRow';
             photoRow.className = 'form-row';
             photoRow.innerHTML = 
                 '<label>Foto Profil</label>' +
                 '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-                    '<input type="file" id="profilePhotoInput" accept="image/png,image/jpeg,image/gif" style="flex:1;min-width:200px;">' +
-                    '<button class="secondary-btn" type="button" onclick="removeProfilePhoto()" style="font-size:11px;">Hapus Foto</button>' +
+                    '<button class="secondary-btn" type="button" onclick="triggerProfilePhotoUpload()" style="font-size:11px;">📷 Pilih Foto</button>' +
+                    '<button class="danger-btn" type="button" onclick="removeProfilePhoto()" style="font-size:11px;">Hapus</button>' +
                 '</div>' +
                 '<small style="color:var(--fb-text-light);">PNG, JPEG, GIF • Maksimal 2MB</small>';
             
-            var bioRow = document.getElementById('edit-bio');
-            if (bioRow && bioRow.parentNode) {
-                bioRow.parentNode.parentNode.insertBefore(photoRow, bioRow.parentNode.nextSibling);
+            var editSection = document.getElementById('profile-edit-section');
+            if (editSection) {
+                var bioRow = document.getElementById('edit-bio');
+                if (bioRow && bioRow.parentNode && bioRow.parentNode.parentNode) {
+                    bioRow.parentNode.parentNode.insertBefore(photoRow, bioRow.parentNode.nextSibling);
+                }
             }
         }
     }
@@ -819,12 +928,8 @@ function saveProfile() {
     var newN = n ? (n.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
     
     currentUser = newU;
-    
     var keys = ['sidebar-username', 'profile-username-display', 'pi-username'];
-    for (var i = 0; i < keys.length; i++) {
-        var el = document.getElementById(keys[i]);
-        if (el) el.textContent = currentUser;
-    }
+    for (var i = 0; i < keys.length; i++) { var el = document.getElementById(keys[i]); if (el) el.textContent = currentUser; }
     var el = document.getElementById('pi-fullname'); if (el) el.textContent = newN;
     
     showToast('Profil diperbarui!');
@@ -838,9 +943,7 @@ function toggleDarkMode() {
     document.body.classList.toggle('dark-mode', isDark);
     localStorage.setItem('yaping_darkMode', isDark);
 }
-
 function changeFontSize(val) { document.body.style.fontSize = val + 'px'; }
-
 function clearAllPosts() {
     if (confirm('Hapus semua postingan?')) {
         communityPosts = {};
@@ -853,37 +956,26 @@ function clearAllPosts() {
         renderFeed();
     }
 }
-
 function resetAllData() {
-    if (confirm('Reset SEMUA data? Ini akan menghapus komunitas, postingan, dan pengaturan!')) {
-        localStorage.clear();
-        location.reload();
-    }
+    if (confirm('Reset SEMUA data?')) { localStorage.clear(); location.reload(); }
 }
 
 // ===== NOTIFICATIONS =====
-function showNotifications() {
-    var d = document.getElementById('notif-dropdown');
-    if (d) d.classList.toggle('hidden');
-}
-
-function addNotification(text, type) {
+function showNotifications() { var d = document.getElementById('notif-dropdown'); if (d) d.classList.toggle('hidden'); }
+function addNotification(text) {
     var badge = document.getElementById('notif-badge');
     if (!badge) return;
     var c = parseInt(badge.textContent) || 0;
     badge.textContent = c + 1;
     badge.classList.remove('hidden');
-    
     var list = document.getElementById('notif-list');
     if (!list) return;
     if (list.querySelector('.notif-empty')) list.innerHTML = '';
-    
     var n = document.createElement('div');
     n.className = 'notif-item';
     n.innerHTML = '<div>' + escapeHtml(text) + '</div><small>Baru saja</small>';
     list.insertBefore(n, list.firstChild);
 }
-
 function clearNotifications() {
     var list = document.getElementById('notif-list');
     var badge = document.getElementById('notif-badge');
@@ -891,77 +983,19 @@ function clearNotifications() {
     if (badge) { badge.classList.add('hidden'); badge.textContent = '0'; }
 }
 
-// ===== EMOJI & UTILS =====
-function addEmoji(target) {
-    emojiTargetInput = target || 'postInput';
-    var p = document.getElementById('emoji-picker');
-    if (p) p.classList.toggle('hidden');
-}
-
-function insertEmoji(emoji) {
-    var input = document.getElementById(emojiTargetInput);
-    if (input) { input.value += emoji; input.focus(); }
-    var p = document.getElementById('emoji-picker');
-    if (p) p.classList.add('hidden');
-}
-
-function doSearch() {
-    var input = document.getElementById('searchInput');
-    var q = input ? input.value.trim() : '';
-    if (q) showToast('Mencari: ' + q);
-}
-
-function showToast(msg) {
-    var t = document.getElementById('toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.classList.remove('hidden');
-    setTimeout(function() { t.classList.add('hidden'); }, 3000);
-}
-
+// ===== UTILS =====
+function addEmoji(target) { emojiTargetInput = target || 'postInput'; var p = document.getElementById('emoji-picker'); if (p) p.classList.toggle('hidden'); }
+function insertEmoji(emoji) { var input = document.getElementById(emojiTargetInput); if (input) { input.value += emoji; input.focus(); } var p = document.getElementById('emoji-picker'); if (p) p.classList.add('hidden'); }
+function doSearch() { var input = document.getElementById('searchInput'); var q = input ? input.value.trim() : ''; if (q) showToast('Mencari: ' + q); }
+function showToast(msg) { var t = document.getElementById('toast'); if (!t) return; t.textContent = msg; t.classList.remove('hidden'); setTimeout(function() { t.classList.add('hidden'); }, 3000); }
 function saveCommunities() { localStorage.setItem('yaping_communities', JSON.stringify(communities)); }
 function saveCommunityPosts() { localStorage.setItem('yaping_communityPosts', JSON.stringify(communityPosts)); }
 function saveJoinedCommunities() { localStorage.setItem('yaping_joinedCommunities', JSON.stringify(joinedCommunities)); }
-
-function formatTimeAgo(ts) {
-    var diff = Date.now() - ts;
-    var m = Math.floor(diff / 60000);
-    var h = Math.floor(diff / 3600000);
-    var d = Math.floor(diff / 86400000);
-    if (m < 1) return 'Baru saja';
-    if (m < 60) return m + 'm lalu';
-    if (h < 24) return h + 'j lalu';
-    return d + 'h lalu';
-}
-
-function escapeHtml(text) {
-    if (!text) return '';
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function getCommunityById(id) {
-    for (var i = 0; i < communities.length; i++) {
-        if (communities[i].id === id) return communities[i];
-    }
-    return null;
-}
-
+function formatTimeAgo(ts) { var diff = Date.now() - ts; var m = Math.floor(diff/60000); var h = Math.floor(diff/3600000); var d = Math.floor(diff/86400000); if (m<1) return 'Baru saja'; if (m<60) return m+'m lalu'; if (h<24) return h+'j lalu'; return d+'h lalu'; }
+function escapeHtml(text) { if (!text) return ''; var div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+function getCommunityById(id) { for (var i=0; i<communities.length; i++) if (communities[i].id === id) return communities[i]; return null; }
 function closeModal() { var m = document.getElementById('modal-overlay'); if (m) m.classList.add('hidden'); }
-
-function showModal(title, content) {
-    var t = document.getElementById('modal-title');
-    var b = document.getElementById('modal-body');
-    var o = document.getElementById('modal-overlay');
-    if (t) t.textContent = title;
-    if (b) b.innerHTML = content;
-    if (o) o.classList.remove('hidden');
-}
+function showModal(title, content) { var t = document.getElementById('modal-title'); var b = document.getElementById('modal-body'); var o = document.getElementById('modal-overlay'); if (t) t.textContent = title; if (b) b.innerHTML = content; if (o) o.classList.remove('hidden'); }
 
 // ===== START =====
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initApp);
-} else {
-    initApp();
-}
+if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initApp); } else { initApp(); }
