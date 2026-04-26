@@ -1,1065 +1,610 @@
-/* ========================================
-   YAPING - Facebook Jadul Style (2008 era)
-   ======================================== */
-
-/* Google Fonts fallback */
-@import url('https://fonts.googleapis.com/css2?family=Lucida+Grande&display=swap');
-
-:root {
-    --fb-blue: #3b5998;
-    --fb-blue-dark: #2d4373;
-    --fb-blue-light: #6d84b4;
-    --fb-blue-lighter: #d8dfea;
-    --fb-blue-bg: #e8edf5;
-    --fb-white: #ffffff;
-    --fb-border: #b0b9c9;
-    --fb-text: #333333;
-    --fb-text-light: #777777;
-    --fb-link: #3b5998;
-    --fb-red: #c0392b;
-    --fb-green: #27ae60;
-    --fb-sidebar-bg: #f0f2f9;
-    --fb-box-shadow: 1px 1px 3px rgba(0,0,0,0.15);
-}
-
-/* DARK MODE */
-body.dark-mode {
-    --fb-blue-bg: #1a1f2e;
-    --fb-white: #242b3d;
-    --fb-border: #3a4460;
-    --fb-text: #d0d8f0;
-    --fb-text-light: #8899bb;
-    --fb-sidebar-bg: #1e2438;
-    --fb-box-shadow: 1px 1px 3px rgba(0,0,0,0.4);
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-    font-family: 'Tahoma', 'Lucida Grande', 'Arial', sans-serif;
-    font-size: 14px;
-    background-color: var(--fb-blue-bg);
-    color: var(--fb-text);
-    min-height: 100vh;
-}
-
-/* ========== TOPBAR ========== */
-#topbar {
-    background: var(--fb-blue);
-    border-bottom: 2px solid var(--fb-blue-dark);
-    position: sticky;
-    top: 0;
-    z-index: 999;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
-
-#topbar-inner {
-    max-width: 980px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    padding: 6px 10px;
-    gap: 10px;
-}
-
-#logo {
-    font-size: 24px;
-    font-weight: bold;
-    color: white;
-    font-family: 'Georgia', serif;
-    letter-spacing: -1px;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-    min-width: 90px;
-}
-
-#topbar-search {
-    display: flex;
-    flex: 1;
-    max-width: 300px;
-}
-
-#topbar-search input {
-    flex: 1;
-    padding: 5px 8px;
-    border: 1px solid #ccc;
-    border-right: none;
-    border-radius: 3px 0 0 3px;
-    font-size: 12px;
-    font-family: 'Tahoma', sans-serif;
-}
-
-#topbar-search button {
-    padding: 5px 10px;
-    background: #4a69b0;
-    color: white;
-    border: 1px solid #3a5290;
-    border-radius: 0 3px 3px 0;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-#topbar-search button:hover { background: #5a79c0; }
-
-#topbar-nav {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: auto;
-}
-
-#topbar-nav a {
-    color: white;
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: bold;
-    padding: 5px 8px;
-    border-radius: 3px;
-    position: relative;
-}
-
-#topbar-nav a:hover { background: rgba(255,255,255,0.15); }
-#topbar-nav a.active-nav { background: rgba(255,255,255,0.2); }
-
-#notif-badge {
-    background: red;
-    color: white;
-    font-size: 10px;
-    border-radius: 50%;
-    padding: 1px 4px;
-    position: absolute;
-    top: 0;
-    right: 0;
-}
-
-/* ========== NOTIFICATION DROPDOWN ========== */
-#notif-dropdown {
-    position: fixed;
-    top: 42px;
-    right: 10px;
-    width: 280px;
-    background: white;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
-    z-index: 1000;
-}
-
-.notif-header {
-    background: var(--fb-blue);
-    color: white;
-    padding: 8px 12px;
-    font-weight: bold;
-    font-size: 12px;
-}
-
-#notif-list { max-height: 300px; overflow-y: auto; }
-
-.notif-item {
-    padding: 10px 12px;
-    border-bottom: 1px solid #eee;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.notif-item:hover { background: #f5f5f5; }
-
-.notif-empty {
-    padding: 20px;
-    text-align: center;
-    color: var(--fb-text-light);
-    font-size: 12px;
-}
-
-.notif-footer {
-    padding: 8px 12px;
-    text-align: center;
-    border-top: 1px solid #eee;
-}
-
-.notif-footer a { font-size: 11px; color: var(--fb-blue); }
-
-/* ========== MAIN LAYOUT ========== */
-#main-layout {
-    max-width: 980px;
-    margin: 12px auto;
-    display: flex;
-    gap: 10px;
-    padding: 0 10px;
-    align-items: flex-start;
-}
-
-/* ========== LEFT SIDEBAR ========== */
-#left-sidebar {
-    width: 200px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-/* ========== RIGHT SIDEBAR ========== */
-#right-sidebar {
-    width: 200px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-/* ========== CENTER CONTENT ========== */
-#center-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-/* ========== SIDEBAR BOXES ========== */
-.sidebar-box {
-    background: var(--fb-white);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    padding: 10px;
-    box-shadow: var(--fb-box-shadow);
-}
-
-.sidebar-box-title {
-    font-weight: bold;
-    font-size: 12px;
-    color: var(--fb-blue);
-    border-bottom: 1px solid var(--fb-blue-lighter);
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.sidebar-profile-pic {
-    width: 60px;
-    height: 60px;
-    background: var(--fb-blue-lighter);
-    border: 2px solid var(--fb-blue);
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
-    margin: 0 auto 8px;
-}
-
-.sidebar-username {
-    text-align: center;
-    font-weight: bold;
-    font-size: 13px;
-    color: var(--fb-blue);
-}
-
-.sidebar-tagline {
-    text-align: center;
-    font-size: 11px;
-    color: var(--fb-text-light);
-    margin-bottom: 8px;
-}
-
-.sidebar-hr { border: none; border-top: 1px solid var(--fb-border); margin: 8px 0; }
-
-.sidebar-menu {
-    list-style: none;
-}
-
-.sidebar-menu li {
-    border-bottom: 1px dotted var(--fb-border);
-}
-
-.sidebar-menu li:last-child { border-bottom: none; }
-
-.sidebar-menu a {
-    display: block;
-    padding: 5px 4px;
-    color: var(--fb-text);
-    text-decoration: none;
-    font-size: 12px;
-    border-radius: 2px;
-}
-
-.sidebar-menu a:hover {
-    background: var(--fb-blue-lighter);
-    color: var(--fb-blue);
-    padding-left: 8px;
-    transition: padding 0.1s;
-}
-
-.sidebar-stat {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 12px;
-    border-bottom: 1px dotted var(--fb-border);
-}
-
-.sidebar-stat:last-child { border-bottom: none; }
-.sidebar-stat strong { color: var(--fb-blue); }
-
-.friend-item {
-    font-size: 12px;
-    padding: 4px 0;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--fb-text);
-}
-
-.friend-item.offline { color: var(--fb-text-light); }
-
-.online-dot {
-    width: 8px; height: 8px;
-    background: var(--fb-green);
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.offline-dot {
-    width: 8px; height: 8px;
-    background: #bbb;
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.sidebar-empty {
-    font-size: 12px;
-    color: var(--fb-text-light);
-    text-align: center;
-    padding: 8px;
-}
-
-/* ========== CONTENT BOXES ========== */
-.content-box {
-    background: var(--fb-white);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    padding: 12px;
-    box-shadow: var(--fb-box-shadow);
-}
-
-.box-title {
-    font-weight: bold;
-    font-size: 13px;
-    color: var(--fb-blue-dark);
-    border-bottom: 2px solid var(--fb-blue-lighter);
-    padding-bottom: 6px;
-    margin-bottom: 12px;
-}
-
-/* ========== TAB LOGIC ========== */
-.tab-content { display: flex; flex-direction: column; gap: 8px; }
-.tab-content.hidden { display: none !important; }
-
-/* ========== CREATE POST ========== */
-.create-post-header {
-    font-size: 12px;
-    color: var(--fb-text-light);
-    margin-bottom: 8px;
-    font-style: italic;
-}
-
-#postInput {
-    width: 100%;
-    min-height: 70px;
-    padding: 8px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    resize: vertical;
-    font-family: 'Tahoma', sans-serif;
-    font-size: 13px;
-    background: var(--fb-white);
-    color: var(--fb-text);
-}
-
-#postInput:focus {
-    outline: none;
-    border-color: var(--fb-blue);
-    box-shadow: 0 0 3px rgba(59,89,152,0.3);
-}
-
-.create-post-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 8px;
-}
-
-.post-options { display: flex; gap: 6px; }
-
-.option-btn {
-    padding: 4px 8px;
-    background: var(--fb-blue-lighter);
-    color: var(--fb-blue-dark);
-    border: 1px solid var(--fb-blue-light);
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: 'Tahoma', sans-serif;
-}
-
-.option-btn:hover { background: var(--fb-blue-light); color: white; }
-
-/* ========== BUTTONS ========== */
-.primary-btn {
-    padding: 6px 14px;
-    background: linear-gradient(to bottom, #5b7cc4, #3b5998);
-    color: white;
-    border: 1px solid #2d4373;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: bold;
-    font-family: 'Tahoma', sans-serif;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
-}
-
-.primary-btn:hover {
-    background: linear-gradient(to bottom, #6b8cd4, #4b69a8);
-}
-
-.primary-btn:active {
-    background: linear-gradient(to bottom, #3b5998, #5b7cc4);
-    transform: translateY(1px);
-}
-
-.secondary-btn {
-    padding: 6px 14px;
-    background: linear-gradient(to bottom, #ffffff, #e4e4e4);
-    color: #333;
-    border: 1px solid #bbb;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
-    font-family: 'Tahoma', sans-serif;
-}
-
-.secondary-btn:hover { background: linear-gradient(to bottom, #f0f0f0, #d4d4d4); }
-
-.danger-btn {
-    padding: 5px 10px;
-    background: linear-gradient(to bottom, #e05252, #c0392b);
-    color: white;
-    border: 1px solid #a0291b;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: 'Tahoma', sans-serif;
-}
-
-.danger-btn:hover { background: linear-gradient(to bottom, #f06262, #d0493b); }
-
-/* ========== POST CARDS ========== */
-.post-card {
-    background: var(--fb-white);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    box-shadow: var(--fb-box-shadow);
-    overflow: hidden;
-}
-
-.post-card-header {
-    background: var(--fb-blue-lighter);
-    border-bottom: 1px solid var(--fb-border);
-    padding: 8px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.post-username {
-    font-weight: bold;
-    color: var(--fb-blue);
-    font-size: 13px;
-    cursor: pointer;
-}
-
-.post-username:hover { text-decoration: underline; }
-
-.post-timestamp {
-    font-size: 11px;
-    color: var(--fb-text-light);
-}
-
-.post-body {
-    padding: 12px;
-    font-size: 13px;
-    line-height: 1.5;
-    word-wrap: break-word;
-}
-
-.post-footer {
-    border-top: 1px solid var(--fb-border);
-    padding: 6px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #fafbfc;
-}
-
-.post-actions-left { display: flex; gap: 6px; }
-
-.like-btn, .comment-btn, .share-btn {
-    padding: 3px 10px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    background: white;
-    cursor: pointer;
-    font-size: 11px;
-    font-family: 'Tahoma', sans-serif;
-    color: var(--fb-text);
-}
-
-.like-btn:hover { background: #fff0f0; border-color: #ffaaaa; }
-.like-btn.liked { background: #fff0f0; border-color: #ff6666; color: #d32f2f; font-weight: bold; }
-.comment-btn:hover { background: var(--fb-blue-lighter); }
-.share-btn:hover { background: #f0fff0; border-color: #88cc88; }
-
-.post-delete-btn {
-    padding: 3px 8px;
-    background: none;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    color: #c0392b;
-    font-family: 'Tahoma', sans-serif;
-}
-
-.post-delete-btn:hover { background: #ffebee; }
-
-/* Comment Section */
-.comment-section {
-    border-top: 1px solid var(--fb-border);
-    background: #fafbff;
-    padding: 8px 12px;
-    display: none;
-}
-
-.comment-section.open { display: block; }
-
-.comment-input-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-
-.comment-input-row input {
-    flex: 1;
-    padding: 5px 8px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    font-size: 12px;
-    font-family: 'Tahoma', sans-serif;
-    background: var(--fb-white);
-    color: var(--fb-text);
-}
-
-.comment-input-row button {
-    padding: 5px 10px;
-    background: var(--fb-blue);
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-}
-
-.comment-list { display: flex; flex-direction: column; gap: 5px; }
-
-.comment-item {
-    background: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 3px;
-    padding: 6px 10px;
-    font-size: 12px;
-}
-
-.comment-item strong { color: var(--fb-blue); margin-right: 5px; }
-
-/* ========== COMMUNITY ========== */
-.create-comm-form { display: flex; flex-direction: column; gap: 10px; }
-
-.form-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.form-row label {
-    font-size: 12px;
-    font-weight: bold;
-    color: var(--fb-text);
-}
-
-.form-row input, .form-row select, .form-row textarea {
-    padding: 6px 8px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    font-size: 12px;
-    font-family: 'Tahoma', sans-serif;
-    background: var(--fb-white);
-    color: var(--fb-text);
-}
-
-.form-row input:focus, .form-row textarea:focus {
-    outline: none;
-    border-color: var(--fb-blue);
-}
-
-.form-row textarea { min-height: 70px; resize: vertical; }
-
-.form-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.cooldown-text {
-    font-size: 11px;
-    color: #c0392b;
-    font-style: italic;
-}
-
-.comm-filter {
-    display: flex;
-    gap: 5px;
-    margin-bottom: 10px;
-}
-
-.filter-btn {
-    padding: 4px 10px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    background: white;
-    cursor: pointer;
-    font-size: 11px;
-    color: var(--fb-text);
-}
-
-.filter-btn.active {
-    background: var(--fb-blue);
-    color: white;
-    border-color: var(--fb-blue-dark);
-}
-
-/* Community List */
-.community-list-new { list-style: none; }
-
-.comm-list-item {
-    border-bottom: 1px solid var(--fb-border);
-    padding: 10px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.comm-list-item:last-child { border-bottom: none; }
-
-.comm-icon {
-    font-size: 20px;
-    width: 40px;
-    height: 40px;
-    background: var(--fb-blue-lighter);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.comm-info { flex: 1; min-width: 0; }
-
-.comm-name {
-    font-weight: bold;
-    font-size: 13px;
-    color: var(--fb-blue);
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.comm-name:hover { text-decoration: underline; }
-
-.comm-meta {
-    font-size: 11px;
-    color: var(--fb-text-light);
-    margin-top: 2px;
-}
-
-.comm-actions { display: flex; gap: 4px; flex-shrink: 0; }
-
-/* ========== COMMUNITY DETAIL ========== */
-.comm-detail-banner {
-    height: 120px;
-    background: linear-gradient(135deg, var(--fb-blue-dark) 0%, var(--fb-blue-light) 100%);
-    border-radius: 3px;
-    margin-bottom: 8px;
-    border: 1px solid var(--fb-border);
-    display: flex;
-    align-items: flex-end;
-    padding: 12px;
-}
-
-.comm-detail-header {
-    background: var(--fb-white);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    padding: 12px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-}
-
-.comm-detail-icon {
-    width: 70px;
-    height: 70px;
-    background: var(--fb-blue-lighter);
-    border: 2px solid var(--fb-blue);
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    flex-shrink: 0;
-}
-
-.comm-detail-info { flex: 1; }
-
-.comm-detail-name {
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--fb-text);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
-}
-
-.verified-check {
-    background: var(--fb-blue);
-    color: white;
-    border-radius: 50%;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-}
-
-.comm-detail-meta { font-size: 12px; color: var(--fb-text-light); }
-
-.back-link {
-    display: inline-block;
-    margin-bottom: 8px;
-    color: var(--fb-blue);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: bold;
-    text-decoration: none;
+/* ============================================
+   YAPING - script.js (Fixed Version)
+   Compatible with Facebook 2008 Style CSS
+   ============================================ */
+
+// ===== GLOBAL DATA =====
+var communities = [];
+var communityPosts = {};
+var joinedCommunities = [];
+var currentUser = '@user';
+var lastCommunityCreate = 0;
+var emojiTargetInput = 'postInput';
+var currentViewedCommunity = null;
+
+// ===== INIT =====
+function initApp() {
+    loadData();
+    renderCommunities('all');
+    renderFeed();
+    updateProfileStats();
+    setupEventListeners();
+    
+    // Load dark mode
+    if (localStorage.getItem('yaping_darkMode') === 'true') {
+        document.body.classList.add('dark-mode');
+        var toggle = document.getElementById('dark-mode-toggle');
+        if (toggle) toggle.checked = true;
+    }
+}
+
+function loadData() {
+    try {
+        var c = localStorage.getItem('yaping_communities');
+        communities = c ? JSON.parse(c) : [
+            { id: 1, name: 'Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now() },
+            { id: 2, name: 'Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000 },
+            { id: 3, name: 'Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000 }
+        ];
+        
+        var p = localStorage.getItem('yaping_communityPosts');
+        communityPosts = p ? JSON.parse(p) : {};
+        
+        var j = localStorage.getItem('yaping_joinedCommunities');
+        joinedCommunities = j ? JSON.parse(j) : [1];
+        
+        var lcc = localStorage.getItem('yaping_lastCommCreate');
+        lastCommunityCreate = lcc ? parseInt(lcc) : 0;
+    } catch(e) {
+        console.log('Load data error:', e);
+        communities = [];
+        communityPosts = {};
+        joinedCommunities = [];
+    }
+}
+
+function setupEventListeners() {
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doSearch();
+        });
+    }
+    
+    document.addEventListener('click', function(e) {
+        var picker = document.getElementById('emoji-picker');
+        if (picker && !picker.contains(e.target)) {
+            var isEmojiBtn = false;
+            var el = e.target;
+            while (el) {
+                if (el.getAttribute && el.getAttribute('onclick') && el.getAttribute('onclick').indexOf('addEmoji') !== -1) {
+                    isEmojiBtn = true;
+                    break;
+                }
+                el = el.parentNode;
+            }
+            if (!isEmojiBtn) picker.classList.add('hidden');
+        }
+    });
+    
+    // Run init
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
+}
+
+// ===== TAB NAVIGATION =====
+function switchToTab(tabName) {
+    var tabs = document.querySelectorAll('.tab-content');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].classList.add('hidden');
+    }
+    
+    var target = document.getElementById(tabName + '-tab');
+    if (target) target.classList.remove('hidden');
+    
+    var navs = document.querySelectorAll('#topbar-nav a');
+    for (var j = 0; j < navs.length; j++) {
+        navs[j].classList.remove('active-nav');
+    }
+    var activeNav = document.getElementById('nav-' + tabName);
+    if (activeNav) activeNav.classList.add('active-nav');
+    
+    if (tabName === 'komunitas') renderCommunities('all');
+    else if (tabName === 'profile') { updateProfileStats(); renderMyPosts(); }
+    else if (tabName === 'home') renderFeed();
+    
+    var nd = document.getElementById('notif-dropdown');
+    if (nd) nd.classList.add('hidden');
+    
+    if (tabName !== 'community-detail') currentViewedCommunity = null;
+    
+    return false;
+}
+
+// ===== COMMUNITIES =====
+function renderCommunities(filter) {
+    if (!filter) filter = 'all';
+    var list = document.getElementById('communityList');
+    if (!list) return;
+    
+    var filtered = [];
+    for (var i = 0; i < communities.length; i++) {
+        if (filter === 'all' || (filter === 'mine' && communities[i].owner === currentUser)) {
+            filtered.push(communities[i]);
+        }
+    }
+    
+    if (filtered.length === 0) {
+        list.innerHTML = '<li class="sidebar-empty">Belum ada komunitas</li>';
+        return;
+    }
+    
+    var html = '';
+    for (var k = 0; k < filtered.length; k++) {
+        var c = filtered[k];
+        var isMember = joinedCommunities.indexOf(c.id) !== -1;
+        var memberBadge = isMember ? ' <span style="color:var(--fb-green)">[Anggota]</span>' : '';
+        var btn = isMember 
+            ? '<button class="primary-btn" onclick="viewCommunity(' + c.id + ')">Lihat</button>'
+            : '<button class="primary-btn" onclick="joinCommunity(' + c.id + ')">Gabung</button>';
+        
+        html += '<li class="comm-list-item">' +
+            '<div class="comm-icon">' + c.category + '</div>' +
+            '<div class="comm-info">' +
+                '<div class="comm-name" onclick="viewCommunity(' + c.id + ')">' + escapeHtml(c.name) + memberBadge + '</div>' +
+                '<div class="comm-meta">' + escapeHtml(c.desc) + ' | ' + c.members + ' anggota</div>' +
+            '</div>' +
+            '<div class="comm-actions">' + btn + '</div>' +
+        '</li>';
+    }
+    list.innerHTML = html;
+}
+
+function filterComm(filter, btn) {
+    var btns = document.querySelectorAll('.comm-filter .filter-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+    if (btn) btn.classList.add('active');
+    renderCommunities(filter);
+}
+
+function addCommunity() {
+    var nameInput = document.getElementById('newCommunityInput');
+    var descInput = document.getElementById('newCommunityDesc');
+    var catInput = document.getElementById('newCommunityCategory');
+    var cooldownInfo = document.getElementById('cooldown-info');
+    
+    var name = nameInput ? nameInput.value.trim() : '';
+    var desc = descInput ? descInput.value.trim() : '';
+    var category = catInput ? catInput.value : '🎮';
+    
+    if (!name) { showToast('Nama komunitas wajib diisi!'); if (nameInput) nameInput.focus(); return; }
+    
+    var now = Date.now();
+    if (now - lastCommunityCreate < 30000) {
+        var remaining = Math.ceil((30000 - (now - lastCommunityCreate)) / 1000);
+        if (cooldownInfo) cooldownInfo.textContent = 'Tunggu ' + remaining + ' detik...';
+        return;
+    }
+    
+    var newComm = {
+        id: Date.now(),
+        name: name,
+        desc: desc || 'Tidak ada deskripsi',
+        category: category,
+        members: 1,
+        owner: currentUser,
+        createdAt: now
+    };
+    
+    communities.unshift(newComm);
+    lastCommunityCreate = now;
+    
+    saveCommunities();
+    localStorage.setItem('yaping_lastCommCreate', now.toString());
+    
+    if (nameInput) nameInput.value = '';
+    if (descInput) descInput.value = '';
+    if (cooldownInfo) cooldownInfo.textContent = 'Komunitas dibuat!';
+    
+    renderCommunities('all');
+    showToast('Komunitas "' + name + '" berhasil dibuat!');
+    
+    setTimeout(function() {
+        if (cooldownInfo && cooldownInfo.textContent.indexOf('Komunitas') !== -1) {
+            cooldownInfo.textContent = '';
+        }
+    }, 3000);
+}
+
+function joinCommunity(commId) {
+    if (joinedCommunities.indexOf(commId) !== -1) { showToast('Kamu sudah anggota!'); return; }
+    
+    var comm = getCommunityById(commId);
+    if (!comm) return;
+    
+    comm.members++;
+    joinedCommunities.push(commId);
+    
+    saveCommunities();
+    saveJoinedCommunities();
+    
+    var activeBtn = document.querySelector('.comm-filter .filter-btn.active');
+    var f = (activeBtn && activeBtn.textContent.indexOf('Milik') !== -1) ? 'mine' : 'all';
+    renderCommunities(f);
+    
+    if (currentViewedCommunity === commId) viewCommunity(commId);
+    
+    showToast('Selamat bergabung di ' + comm.name + '!');
+    addNotification('Kamu sekarang anggota ' + comm.name, 'comm');
+}
+
+function viewCommunity(commId) {
+    var comm = getCommunityById(commId);
+    if (!comm) return;
+    
+    currentViewedCommunity = commId;
+    
+    var tabs = document.querySelectorAll('.tab-content');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.add('hidden');
+    
+    var detailTab = document.getElementById('community-detail-tab');
+    if (!detailTab) return;
+    detailTab.classList.remove('hidden');
+    
+    var isMember = joinedCommunities.indexOf(commId) !== -1;
+    
+    var postBox = '';
+    if (isMember) {
+        postBox = '<div class="content-box">' +
+            '<div class="box-title">Buat Postingan</div>' +
+            '<textarea id="communityPostInput" class="comm-post-input" placeholder="Tulis untuk ' + escapeHtml(comm.name) + '..."></textarea>' +
+            '<div style="display:flex;gap:8px;align-items:center;">' +
+                '<button class="option-btn" onclick="addEmoji(\'communityPostInput\')" style="font-size:11px;">Emoji</button>' +
+                '<button class="primary-btn" onclick="submitCommunityPost(' + commId + ')">Bagikan</button>' +
+            '</div>' +
+        '</div>';
+    } else {
+        postBox = '<div class="content-box" style="text-align:center;padding:20px;">' +
+            '<div style="font-size:36px;margin-bottom:10px;">🔒</div>' +
+            '<p style="margin-bottom:12px;font-size:12px;">Gabung untuk bisa posting & berdiskusi</p>' +
+            '<button class="primary-btn" onclick="joinCommunity(' + commId + ')">Gabung Sekarang</button>' +
+        '</div>';
+    }
+    
+    var postsHTML = renderCommunityPosts(commId);
+    
+    var memberText = isMember ? ' | <span style="color:var(--fb-green)">Anggota</span>' : '';
+    var joinBtn = !isMember ? '<button class="follow-btn-big" onclick="joinCommunity(' + commId + ')">Gabung</button>' : '';
+    
+    detailTab.innerHTML = 
+        '<div class="content-box">' +
+            '<a class="back-link" onclick="switchToTab(\'komunitas\');return false;">&larr; Kembali</a>' +
+            '<div class="comm-detail-banner"></div>' +
+            '<div class="comm-detail-header">' +
+                '<div class="comm-detail-icon">' + comm.category + '</div>' +
+                '<div class="comm-detail-info">' +
+                    '<div class="comm-detail-name">' + escapeHtml(comm.name) + '</div>' +
+                    '<div style="font-size:12px;color:var(--fb-text-light);margin-bottom:8px;">' + escapeHtml(comm.desc) + '</div>' +
+                    '<div class="comm-detail-meta">' + comm.members + ' anggota | Oleh ' + escapeHtml(comm.owner) + memberText + '</div>' +
+                '</div>' +
+                joinBtn +
+            '</div>' +
+        '</div>' +
+        postBox +
+        '<div class="content-box">' +
+            '<div class="box-title">Diskusi Terbaru</div>' +
+            '<div id="comm-posts-feed">' + postsHTML + '</div>' +
+        '</div>';
+}
+
+function submitCommunityPost(commId) {
+    var input = document.getElementById('communityPostInput');
+    var text = input ? input.value.trim() : '';
+    
+    if (!text) { showToast('Tulis sesuatu dulu!'); if (input) input.focus(); return; }
+    
+    var comm = getCommunityById(commId);
+    if (!comm) return;
+    
+    var newPost = {
+        id: Date.now(),
+        communityId: commId,
+        author: currentUser,
+        content: text,
+        likes: 0,
+        likedBy: [],
+        createdAt: Date.now(),
+        photo: null
+    };
+    
+    if (!communityPosts[commId]) communityPosts[commId] = [];
+    communityPosts[commId].unshift(newPost);
+    
+    saveCommunityPosts();
+    
+    if (input) input.value = '';
+    showToast('Postingan dibagikan ke ' + comm.name);
+    
+    var feedEl = document.getElementById('comm-posts-feed');
+    if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
+    
+    if (comm.owner !== currentUser) addNotification(currentUser + ' memposting di ' + comm.name, 'comm');
+}
+
+function renderCommunityPosts(commId) {
+    var posts = communityPosts[commId] || [];
+    if (posts.length === 0) return '<div class="sidebar-empty">Belum ada diskusi. Jadilah yang pertama!</div>';
+    
+    var html = '';
+    for (var i = 0; i < posts.length; i++) {
+        var p = posts[i];
+        var timeAgo = formatTimeAgo(p.createdAt);
+        var isLiked = p.likedBy.indexOf(currentUser) !== -1;
+        
+        html += '<div class="post-card" style="margin-bottom:8px;">' +
+            '<div class="post-card-header">' +
+                '<span class="post-username">' + escapeHtml(p.author) + '</span>' +
+                '<span class="post-timestamp">' + timeAgo + '</span>' +
+            '</div>' +
+            '<div class="post-body">' + escapeHtml(p.content) + '</div>' +
+            '<div class="post-footer">' +
+                '<div class="post-actions-left">' +
+                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',' + p.id + ')">' + 
+                        (isLiked ? '❤️' : '🤍') + ' ' + p.likes + '</button>' +
+                    '<button class="comment-btn" onclick="showToast(\'Fitur komentar segera hadir!\')">Komentar</button>' +
+                '</div>' +
+                '<button class="share-btn" onclick="showToast(\'Link disalin!\')">Bagikan</button>' +
+            '</div>' +
+        '</div>';
+    }
+    return html;
+}
+
+function likeCommunityPost(commId, postId) {
+    var posts = communityPosts[commId];
+    if (!posts) return;
+    
+    var post = null;
+    for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === postId) { post = posts[i]; break; }
+    }
+    if (!post) return;
+    
+    var idx = post.likedBy.indexOf(currentUser);
+    if (idx === -1) { post.likes++; post.likedBy.push(currentUser); }
+    else { post.likes--; post.likedBy.splice(idx, 1); }
+    
+    saveCommunityPosts();
+    
+    if (currentViewedCommunity === commId) {
+        var feedEl = document.getElementById('comm-posts-feed');
+        if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
+    }
+}
+
+// ===== HOME FEED =====
+function submitPost() {
+    var input = document.getElementById('postInput');
+    var text = input ? input.value.trim() : '';
+    if (!text) { showToast('Tulis sesuatu dulu!'); if (input) input.focus(); return; }
+    
+    showToast('Postingan dibagikan!');
+    if (input) input.value = '';
+    renderFeed();
+}
+
+function renderFeed() {
+    var feed = document.getElementById('feed');
+    if (!feed) return;
+    
+    if (!feed.innerHTML.trim() || feed.innerHTML.indexOf('Selamat datang') !== -1) {
+        feed.innerHTML = 
+            '<div class="post-card">' +
+                '<div class="post-card-header"><span class="post-username">@user</span><span class="post-timestamp">Baru saja</span></div>' +
+                '<div class="post-body">Selamat datang di Yaping! 👋 Mulai bagikan pikiranmu atau gabung komunitas menarik.</div>' +
+                '<div class="post-footer">' +
+                    '<div class="post-actions-left">' +
+                        '<button class="like-btn" onclick="showToast(\'Terima kasih!\')">🤍 0</button>' +
+                        '<button class="comment-btn" onclick="showToast(\'Komentar...\')">Komentar</button>' +
+                    '</div>' +
+                    '<button class="share-btn" onclick="showToast(\'Dibagikan!\')">Bagikan</button>' +
+                '</div>' +
+            '</div>';
+    }
+}
+
+// ===== PROFILE =====
+function renderMyPosts() {
+    var feed = document.getElementById('my-posts-feed');
+    if (feed) feed.innerHTML = '<div class="sidebar-empty">Kamu belum memiliki postingan. Yuk mulai berbagi!</div>';
+}
+
+function updateProfileStats() {
+    var els = {
+        'pi-username': currentUser,
+        'pi-fullname': 'Pengguna Yaping',
+        'pi-posts': '0',
+        'pi-likes': '0',
+        'sidebar-username': currentUser,
+        'profile-username-display': currentUser
+    };
+    
+    for (var key in els) {
+        var el = document.getElementById(key);
+        if (el) el.textContent = els[key];
+    }
+    
+    var count = 0;
+    for (var i = 0; i < communities.length; i++) if (communities[i].owner === currentUser) count++;
+    var el = document.getElementById('pi-comms');
+    if (el) el.textContent = count;
+}
+
+function showProfileSection(section, btn) {
+    var btns = document.querySelectorAll('.profile-tab-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+    if (btn) btn.classList.add('active');
+    
+    var secs = ['profile-info-section', 'profile-posts-section', 'profile-edit-section'];
+    for (var j = 0; j < secs.length; j++) {
+        var s = document.getElementById(secs[j]);
+        if (s) s.classList.add('hidden');
+    }
+    
+    if (section === 'info') { var s = document.getElementById('profile-info-section'); if (s) s.classList.remove('hidden'); }
+    if (section === 'posts') { var s = document.getElementById('profile-posts-section'); if (s) { s.classList.remove('hidden'); renderMyPosts(); } }
+    if (section === 'edit') {
+        var u = document.getElementById('edit-username'); if (u) u.value = currentUser;
+        var n = document.getElementById('edit-fullname'); if (n) n.value = 'Pengguna Yaping';
+        var b = document.getElementById('edit-bio'); if (b) b.value = '';
+        var s = document.getElementById('profile-edit-section'); if (s) s.classList.remove('hidden');
+    }
+}
+
+function saveProfile() {
+    var u = document.getElementById('edit-username');
+    var n = document.getElementById('edit-fullname');
+    var newU = u ? (u.value.trim() || currentUser) : currentUser;
+    var newN = n ? (n.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
+    
+    currentUser = newU;
+    
+    var keys = ['sidebar-username', 'profile-username-display', 'pi-username'];
+    for (var i = 0; i < keys.length; i++) {
+        var el = document.getElementById(keys[i]);
+        if (el) el.textContent = currentUser;
+    }
+    var el = document.getElementById('pi-fullname'); if (el) el.textContent = newN;
+    
+    showToast('Profil diperbarui!');
+    showProfileSection('info', document.querySelector('.profile-tab-btn'));
+}
+
+// ===== SETTINGS =====
+function toggleDarkMode() {
+    var t = document.getElementById('dark-mode-toggle');
+    var isDark = t ? t.checked : false;
+    document.body.classList.toggle('dark-mode', isDark);
+    localStorage.setItem('yaping_darkMode', isDark);
+}
+
+function changeFontSize(val) { document.body.style.fontSize = val + 'px'; }
+
+function clearAllPosts() {
+    if (confirm('Hapus semua postingan?')) {
+        communityPosts = {};
+        saveCommunityPosts();
+        showToast('Postingan dihapus!');
+        if (currentViewedCommunity) {
+            var f = document.getElementById('comm-posts-feed');
+            if (f) f.innerHTML = renderCommunityPosts(currentViewedCommunity);
+        }
+    }
+}
+
+function resetAllData() {
+    if (confirm('Reset SEMUA data?')) {
+        localStorage.clear();
+        location.reload();
+    }
+}
+
+// ===== NOTIFICATIONS =====
+function showNotifications() {
+    var d = document.getElementById('notif-dropdown');
+    if (d) d.classList.toggle('hidden');
+}
+
+function addNotification(text, type) {
+    var badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    var c = parseInt(badge.textContent) || 0;
+    badge.textContent = c + 1;
+    badge.classList.remove('hidden');
+    
+    var list = document.getElementById('notif-list');
+    if (!list) return;
+    if (list.querySelector('.notif-empty')) list.innerHTML = '';
+    
+    var n = document.createElement('div');
+    n.className = 'notif-item';
+    n.innerHTML = '<div>' + escapeHtml(text) + '</div><small>Baru saja</small>';
+    list.insertBefore(n, list.firstChild);
+}
+
+function clearNotifications() {
+    var list = document.getElementById('notif-list');
+    var badge = document.getElementById('notif-badge');
+    if (list) list.innerHTML = '<div class="notif-empty">Belum ada notifikasi</div>';
+    if (badge) { badge.classList.add('hidden'); badge.textContent = '0'; }
+}
+
+// ===== EMOJI & UTILS =====
+function addEmoji(target) {
+    emojiTargetInput = target || 'postInput';
+    var p = document.getElementById('emoji-picker');
+    if (p) p.classList.toggle('hidden');
+}
+
+function insertEmoji(emoji) {
+    var input = document.getElementById(emojiTargetInput);
+    if (input) { input.value += emoji; input.focus(); }
+    var p = document.getElementById('emoji-picker');
+    if (p) p.classList.add('hidden');
+}
+
+function addPhoto() { showToast('Fitur upload foto segera hadir!'); }
+
+function doSearch() {
+    var input = document.getElementById('searchInput');
+    var q = input ? input.value.trim() : '';
+    if (q) showToast('Mencari: ' + q);
+}
+
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(function() { t.classList.add('hidden'); }, 3000);
+}
+
+function saveCommunities() { localStorage.setItem('yaping_communities', JSON.stringify(communities)); }
+function saveCommunityPosts() { localStorage.setItem('yaping_communityPosts', JSON.stringify(communityPosts)); }
+function saveJoinedCommunities() { localStorage.setItem('yaping_joinedCommunities', JSON.stringify(joinedCommunities)); }
+
+function formatTimeAgo(ts) {
+    var diff = Date.now() - ts;
+    var m = Math.floor(diff / 60000);
+    var h = Math.floor(diff / 3600000);
+    var d = Math.floor(diff / 86400000);
+    if (m < 1) return 'Baru saja';
+    if (m < 60) return m + 'm lalu';
+    if (h < 24) return h + 'j lalu';
+    return d + 'h lalu';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getCommunityById(id) {
+    for (var i = 0; i < communities.length; i++) {
+        if (communities[i].id === id) return communities[i];
+    }
+    return null;
+}
+
+function closeModal() { var m = document.getElementById('modal-overlay'); if (m) m.classList.add('hidden'); }
+
+function showModal(title, content) {
+    var t = document.getElementById('modal-title');
+    var b = document.getElementById('modal-body');
+    var o = document.getElementById('modal-overlay');
+    if (t) t.textContent = title;
+    if (b) b.innerHTML = content;
+    if (o) o.classList.remove('hidden');
+}
+
+// ===== START =====
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
 }
-
-.back-link:hover { text-decoration: underline; }
-
-.follow-btn-big {
-    padding: 7px 18px;
-    background: linear-gradient(to bottom, #5b7cc4, #3b5998);
-    color: white;
-    border: 1px solid #2d4373;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: bold;
-    font-family: 'Tahoma', sans-serif;
-}
-
-.follow-btn-big.following {
-    background: linear-gradient(to bottom, #ffffff, #e4e4e4);
-    color: #333;
-    border-color: #bbb;
-}
-
-/* Post in community */
-.comm-post-input {
-    width: 100%;
-    min-height: 60px;
-    padding: 8px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    font-family: 'Tahoma', sans-serif;
-    background: var(--fb-white);
-    color: var(--fb-text);
-    resize: vertical;
-}
-
-/* ========== PROFILE ========== */
-.profile-cover {
-    background: linear-gradient(135deg, var(--fb-blue-dark), var(--fb-blue-light));
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    padding: 20px;
-    box-shadow: var(--fb-box-shadow);
-}
-
-.profile-cover-inner {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.profile-avatar-big {
-    width: 80px;
-    height: 80px;
-    background: white;
-    border: 3px solid white;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 40px;
-}
-
-.profile-name-area h2 { color: white; font-size: 20px; }
-.profile-name-area span { color: rgba(255,255,255,0.8); font-size: 12px; }
-
-.profile-tabs {
-    background: var(--fb-white);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    display: flex;
-    overflow: hidden;
-    box-shadow: var(--fb-box-shadow);
-}
-
-.profile-tab-btn {
-    flex: 1;
-    padding: 8px;
-    background: none;
-    border: none;
-    border-right: 1px solid var(--fb-border);
-    cursor: pointer;
-    font-size: 12px;
-    font-family: 'Tahoma', sans-serif;
-    color: var(--fb-blue);
-    font-weight: bold;
-}
-
-.profile-tab-btn:last-child { border-right: none; }
-.profile-tab-btn:hover { background: var(--fb-blue-lighter); }
-.profile-tab-btn.active { background: var(--fb-blue); color: white; }
-
-.info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-
-.info-item {
-    padding: 8px;
-    background: var(--fb-blue-bg);
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    font-size: 12px;
-}
-
-.info-item strong { color: var(--fb-text-light); display: block; margin-bottom: 2px; }
-
-/* ========== SETTINGS ========== */
-.settings-group {
-    margin-bottom: 15px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.settings-label {
-    background: var(--fb-blue-lighter);
-    padding: 6px 10px;
-    font-weight: bold;
-    font-size: 12px;
-    color: var(--fb-blue-dark);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.settings-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--fb-border);
-    font-size: 12px;
-}
-
-.settings-row:last-child { border-bottom: none; }
-
-.settings-row select {
-    padding: 3px 6px;
-    border: 1px solid var(--fb-border);
-    border-radius: 3px;
-    font-size: 11px;
-    font-family: 'Tahoma', sans-serif;
-}
-
-/* Toggle Switch */
-.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.slider {
-    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    background: #ccc; border-radius: 20px; cursor: pointer;
-    transition: 0.3s;
-}
-.slider:before {
-    content: ""; position: absolute;
-    width: 14px; height: 14px; left: 3px; bottom: 3px;
-    background: white; border-radius: 50%; transition: 0.3s;
-}
-input:checked + .slider { background: var(--fb-blue); }
-input:checked + .slider:before { transform: translateX(16px); }
-
-/* ========== ADS BOX ========== */
-.ads-box { background: #fffbe6; border-color: #f0c030; }
-.ads-label { font-weight: bold; font-size: 12px; color: #8a6000; }
-
-/* ========== EMOJI PICKER ========== */
-#emoji-picker {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: white;
-    border: 1px solid var(--fb-border);
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    z-index: 500;
-    padding: 10px;
-}
-
-.emoji-grid {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 5px;
-}
-
-.emoji-grid span {
-    font-size: 20px;
-    cursor: pointer;
-    padding: 4px;
-    text-align: center;
-    border-radius: 3px;
-}
-
-.emoji-grid span:hover { background: var(--fb-blue-lighter); }
-
-/* ========== MODAL ========== */
-#modal-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.5);
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#modal-overlay.hidden { display: none !important; }
-
-#modal-box {
-    background: white;
-    border: 2px solid var(--fb-blue);
-    border-radius: 4px;
-    width: 380px;
-    max-width: 90%;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
-    overflow: hidden;
-}
-
-#modal-title {
-    background: var(--fb-blue);
-    color: white;
-    padding: 10px 15px;
-    font-weight: bold;
-    font-size: 13px;
-}
-
-#modal-body {
-    padding: 15px;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-#modal-footer {
-    padding: 10px 15px;
-    background: #f5f5f5;
-    border-top: 1px solid #ddd;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-
-/* ========== TOAST ========== */
-#toast {
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.8);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 4px;
-    font-size: 13px;
-    z-index: 3000;
-    pointer-events: none;
-    white-space: nowrap;
-}
-
-#toast.hidden { display: none; }
-
-/* Popular posts in sidebar */
-.sidebar-post-item {
-    font-size: 11px;
-    padding: 5px 0;
-    border-bottom: 1px dotted var(--fb-border);
-    cursor: pointer;
-    color: var(--fb-text);
-}
-
-.sidebar-post-item:last-child { border-bottom: none; }
-.sidebar-post-item:hover { color: var(--fb-blue); }
-
-.sidebar-comm-item {
-    font-size: 11px;
-    padding: 4px 0;
-    cursor: pointer;
-    color: var(--fb-blue);
-    border-bottom: 1px dotted var(--fb-border);
-}
-
-.sidebar-comm-item:last-child { border-bottom: none; }
-.sidebar-comm-item:hover { text-decoration: underline; }
-
-/* ========== RESPONSIVE ========== */
-@media (max-width: 820px) {
-    #left-sidebar, #right-sidebar { display: none; }
-    #main-layout { padding: 0 5px; }
-}
-
-@media (max-width: 600px) {
-    #topbar-search { display: none; }
-    .info-grid { grid-template-columns: 1fr; }
-}
-
-/* Utility */
-.hidden { display: none !important; }
-.mt-8 { margin-top: 8px; }
