@@ -3,28 +3,99 @@
 // Facebook 2008 Style Compatible
 // ============================================
 
+// ===== STORAGE HELPERS =====
+function loadStoredJSON(key, fallback) {
+    try {
+        var raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+        console.warn('Gagal membaca data ' + key + ', memakai default:', e);
+        return fallback;
+    }
+}
+
+function saveStoredJSON(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (e) {
+        console.warn('Gagal menyimpan data ' + key + ':', e);
+        if (typeof showToast === 'function') {
+            showToast('⚠️ Data terlalu besar atau browser menolak penyimpanan.');
+        }
+        return false;
+    }
+}
+
+function createLocalId(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+}
+
+function getOrCreateStoredValue(key, prefix) {
+    var value = localStorage.getItem(key);
+    if (!value) {
+        value = createLocalId(prefix);
+        localStorage.setItem(key, value);
+    }
+    return value;
+}
+
+function makePeerUsername(id) {
+    var clean = String(id || createLocalId('peer'))
+        .toLowerCase()
+        .replace(/^yaping-/, '')
+        .replace(/^client-/, '')
+        .replace(/^peer-/, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    
+    var parts = clean.split('-').filter(Boolean);
+    var shortName = parts.slice(0, 2).join('-') || clean.substring(0, 12) || 'local';
+    return '@peer-' + shortName;
+}
+
 // ===== DATA & STATE =====
-let communities = JSON.parse(localStorage.getItem('yaping_communities')) || [
+let communities = loadStoredJSON('yaping_communities', [
     { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now() },
     { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000 },
     { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000 }
-];
+]);
 
-let communityPosts = JSON.parse(localStorage.getItem('yaping_communityPosts')) || {};
-let joinedCommunities = JSON.parse(localStorage.getItem('yaping_joinedCommunities')) || [1];
-let feedPosts = JSON.parse(localStorage.getItem('yaping_feedPosts')) || [];
-let currentUser = '@user';
+let communityPosts = loadStoredJSON('yaping_communityPosts', {});
+let joinedCommunities = loadStoredJSON('yaping_joinedCommunities', [1]);
+let feedPosts = loadStoredJSON('yaping_feedPosts', []);
 let lastCommunityCreate = localStorage.getItem('yaping_lastCommCreate') || 0;
 let emojiTargetInput = 'postInput';
 let currentViewedCommunity = null;
 let postImage = null;
+let localClientId = getOrCreateStoredValue('yaping_clientId', 'client');
+let preferredPeerId = localStorage.getItem('yaping_preferredPeerId') || ('yaping-' + localClientId.replace(/[^a-zA-Z0-9-]/g, ''));
+let storedCurrentUser = localStorage.getItem('yaping_currentUser');
+let currentUser = (!storedCurrentUser || storedCurrentUser === '@user') ? makePeerUsername(preferredPeerId) : storedCurrentUser;
+let currentFullname = localStorage.getItem('yaping_currentFullname') || 'Pengguna Yaping';
+let currentBio = localStorage.getItem('yaping_currentBio') || '';
 
 // Peer.js Configuration
 let peer = null;
 let peerId = null;
 let connections = {};
-let activeConnections = JSON.parse(localStorage.getItem('yaping_activeConnections')) || [];
-let knownPeerIds = JSON.parse(localStorage.getItem('yaping_knownPeerIds')) || [];
+let pendingConnections = {};
+let activeConnections = loadStoredJSON('yaping_activeConnections', []);
+let knownPeerIds = loadStoredJSON('yaping_knownPeerIds', []);
+let peerFallbackStarted = false;
+let peerReady = false;
+let currentPeerOptions = {};
+let bootstrapPeer = null;
+let bootstrapSlotId = null;
+let bootstrapReady = false;
+let bootstrapDiscoveryStarted = false;
+let bootstrapRetryInterval = null;
+let bootstrapStatus = 'menunggu';
+let bootstrapClaimInProgress = false;
+
+// Slot publik ini jadi "ruang temu" otomatis. Tidak perlu input Peer ID manual.
+let bootstrapRoomName = 'yaping-public-room-2026-v2';
+let bootstrapSlotCount = 12;
 
 // Hashtags tracking
 let allHashtags = new Set();
@@ -32,11 +103,13 @@ let allHashtags = new Set();
 // Auto-connect interval
 let autoConnectInterval = null;
 
+feedPosts = normalizeFeedPosts(feedPosts);
+communityPosts = normalizeCommunityPosts(communityPosts);
+migrateDefaultUserIdentity();
+rebuildHashtags();
+
 // ===== INISIALISASI =====
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Peer.js
-    initializePeer();
-    
     // Set active state on topbar for home tab
     var homeNavLink = document.getElementById('nav-home');
     if (homeNavLink) homeNavLink.classList.add('active-nav');
@@ -53,7 +126,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load data awal
     renderCommunities('all');
     renderFeed();
+    renderRightSidebar();
     updateProfileStats();
+
+    // Initialize Peer.js setelah UI lokal tampil, supaya feed tetap muncul walau CDN/server online lambat.
+    initializePeer();
     
     // Setup search
     var searchInput = document.getElementById('searchInput');
@@ -144,37 +221,438 @@ function switchToTab(tabName) {
     }
 }
 
+// ===== POST DATA HELPERS =====
+function normalizePost(raw, scope, communityId) {
+    if (!raw || (!raw.content && !raw.photo)) return null;
+    
+    var createdAt = parseInt(raw.createdAt, 10);
+    if (!createdAt || isNaN(createdAt)) createdAt = Date.now();
+    
+    var likes = parseInt(raw.likes, 10);
+    if (isNaN(likes) || likes < 0) likes = 0;
+    
+    var post = {
+        id: raw.id || raw.postId || createLocalId(scope || 'post'),
+        author: raw.author || raw.fromUser || '@teman',
+        content: raw.content || '',
+        likes: likes,
+        likedBy: Array.isArray(raw.likedBy) ? raw.likedBy : [],
+        createdAt: createdAt,
+        photo: raw.photo || null,
+        originPeerId: raw.originPeerId || raw.fromPeerId || null,
+        scope: scope || raw.scope || 'feed'
+    };
+    
+    if (communityId !== undefined && communityId !== null) {
+        post.communityId = parseInt(communityId, 10);
+    } else if (raw.communityId !== undefined && raw.communityId !== null) {
+        post.communityId = parseInt(raw.communityId, 10);
+    }
+    
+    return post;
+}
+
+function findPostIndexById(posts, postId) {
+    if (!Array.isArray(posts)) return -1;
+    for (var i = 0; i < posts.length; i++) {
+        if (String(posts[i].id) === String(postId)) return i;
+    }
+    return -1;
+}
+
+function normalizeFeedPosts(posts) {
+    if (!Array.isArray(posts)) return [];
+    
+    var normalized = [];
+    for (var i = 0; i < posts.length; i++) {
+        var post = normalizePost(posts[i], 'feed');
+        if (post && findPostIndexById(normalized, post.id) === -1) {
+            normalized.push(post);
+        }
+    }
+    
+    normalized.sort(function(a, b) {
+        return b.createdAt - a.createdAt;
+    });
+    return normalized;
+}
+
+function normalizeCommunityPosts(postsByCommunity) {
+    var normalized = {};
+    postsByCommunity = postsByCommunity || {};
+    
+    for (var commId in postsByCommunity) {
+        var list = Array.isArray(postsByCommunity[commId]) ? postsByCommunity[commId] : [];
+        normalized[commId] = [];
+        
+        for (var i = 0; i < list.length; i++) {
+            var post = normalizePost(list[i], 'community', commId);
+            if (post && findPostIndexById(normalized[commId], post.id) === -1) {
+                normalized[commId].push(post);
+            }
+        }
+        
+        normalized[commId].sort(function(a, b) {
+            return b.createdAt - a.createdAt;
+        });
+    }
+    
+    return normalized;
+}
+
+function saveFeedPosts() {
+    saveStoredJSON('yaping_feedPosts', feedPosts);
+}
+
+function upsertFeedPost(post, shouldRender) {
+    post = normalizePost(post, 'feed');
+    if (!post) return false;
+    
+    if (findPostIndexById(feedPosts, post.id) !== -1) {
+        return false;
+    }
+    
+    feedPosts.unshift(post);
+    feedPosts.sort(function(a, b) {
+        return b.createdAt - a.createdAt;
+    });
+    saveFeedPosts();
+    rebuildHashtags();
+    
+    if (shouldRender !== false) {
+        renderFeed();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    
+    return true;
+}
+
+function upsertCommunityPost(commId, post, shouldRender) {
+    post = normalizePost(post, 'community', commId);
+    if (!post) return false;
+    
+    if (!communityPosts[commId]) {
+        communityPosts[commId] = [];
+    }
+    
+    if (findPostIndexById(communityPosts[commId], post.id) !== -1) {
+        return false;
+    }
+    
+    communityPosts[commId].unshift(post);
+    communityPosts[commId].sort(function(a, b) {
+        return b.createdAt - a.createdAt;
+    });
+    saveCommunityPosts();
+    rebuildHashtags();
+    
+    if (shouldRender !== false) {
+        if (currentViewedCommunity === parseInt(commId, 10)) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+        }
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    
+    return true;
+}
+
+function mergeFeedPosts(posts) {
+    if (!Array.isArray(posts)) return 0;
+    
+    var added = 0;
+    for (var i = 0; i < posts.length; i++) {
+        if (upsertFeedPost(posts[i], false)) added++;
+    }
+    
+    if (added > 0) {
+        renderFeed();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    return added;
+}
+
+function mergeCommunityPosts(postsByCommunity) {
+    if (!postsByCommunity) return 0;
+    
+    var added = 0;
+    for (var commId in postsByCommunity) {
+        var list = postsByCommunity[commId];
+        if (!Array.isArray(list)) continue;
+        
+        for (var i = 0; i < list.length; i++) {
+            if (upsertCommunityPost(commId, list[i], false)) added++;
+        }
+    }
+    
+    if (added > 0) {
+        if (currentViewedCommunity) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
+        }
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    return added;
+}
+
+function removeDeletedPost(data) {
+    if (!data || !data.postId) return false;
+    
+    var removed = false;
+    if (data.scope === 'community') {
+        var commId = data.communityId;
+        var posts = communityPosts[commId] || [];
+        var index = findPostIndexById(posts, data.postId);
+        if (index !== -1) {
+            if (data.originPeerId && posts[index].originPeerId && data.originPeerId !== posts[index].originPeerId) {
+                return false;
+            }
+            posts.splice(index, 1);
+            saveCommunityPosts();
+            removed = true;
+            
+            if (currentViewedCommunity === parseInt(commId, 10)) {
+                var feedEl = document.getElementById('comm-posts-feed');
+                if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+            }
+        }
+    } else {
+        var feedIndex = findPostIndexById(feedPosts, data.postId);
+        if (feedIndex !== -1) {
+            if (data.originPeerId && feedPosts[feedIndex].originPeerId && data.originPeerId !== feedPosts[feedIndex].originPeerId) {
+                return false;
+            }
+            feedPosts.splice(feedIndex, 1);
+            saveFeedPosts();
+            renderFeed();
+            removed = true;
+        }
+    }
+    
+    if (removed) {
+        rebuildHashtags();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    
+    return removed;
+}
+
+function mergeCommunities(incomingCommunities) {
+    if (!Array.isArray(incomingCommunities)) return 0;
+    
+    var added = 0;
+    for (var i = 0; i < incomingCommunities.length; i++) {
+        var incoming = incomingCommunities[i];
+        if (!incoming || incoming.id === undefined || incoming.id === null) continue;
+        
+        var exists = false;
+        for (var j = 0; j < communities.length; j++) {
+            if (String(communities[j].id) === String(incoming.id)) {
+                exists = true;
+                break;
+            }
+        }
+        
+        if (!exists) {
+            communities.unshift(incoming);
+            added++;
+        }
+    }
+    
+    if (added > 0) {
+        saveCommunities();
+        renderCommunities('all');
+        renderRightSidebar();
+    }
+    return added;
+}
+
+function rebuildHashtags() {
+    allHashtags.clear();
+    
+    for (var i = 0; i < feedPosts.length; i++) {
+        collectHashtags(feedPosts[i].content);
+    }
+    
+    for (var commId in communityPosts) {
+        var posts = communityPosts[commId] || [];
+        for (var j = 0; j < posts.length; j++) {
+            collectHashtags(posts[j].content);
+        }
+    }
+}
+
+function collectHashtags(text) {
+    if (!text) return;
+    var matches = text.match(/#[a-zA-Z0-9_]+/g);
+    if (!matches) return;
+    
+    for (var i = 0; i < matches.length; i++) {
+        allHashtags.add(matches[i]);
+    }
+}
+
+function jsString(value) {
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+}
+
+function isOwnPost(post) {
+    if (!post) return false;
+    return post.author === currentUser ||
+        post.originPeerId === peerId ||
+        post.originPeerId === localClientId ||
+        post.originPeerId === preferredPeerId;
+}
+
+function migrateDefaultUserIdentity() {
+    if (currentUser === '@user') return;
+    
+    var changedFeed = false;
+    for (var i = 0; i < feedPosts.length; i++) {
+        if (feedPosts[i].author === '@user') {
+            feedPosts[i].author = currentUser;
+            feedPosts[i].originPeerId = feedPosts[i].originPeerId || localClientId;
+            changedFeed = true;
+        }
+        if (Array.isArray(feedPosts[i].likedBy)) {
+            var likedIndex = feedPosts[i].likedBy.indexOf('@user');
+            if (likedIndex !== -1) {
+                feedPosts[i].likedBy[likedIndex] = currentUser;
+                changedFeed = true;
+            }
+        }
+    }
+    
+    var changedCommunityPosts = false;
+    for (var commId in communityPosts) {
+        var posts = communityPosts[commId] || [];
+        for (var p = 0; p < posts.length; p++) {
+            if (posts[p].author === '@user') {
+                posts[p].author = currentUser;
+                posts[p].originPeerId = posts[p].originPeerId || localClientId;
+                changedCommunityPosts = true;
+            }
+            if (Array.isArray(posts[p].likedBy)) {
+                var communityLikedIndex = posts[p].likedBy.indexOf('@user');
+                if (communityLikedIndex !== -1) {
+                    posts[p].likedBy[communityLikedIndex] = currentUser;
+                    changedCommunityPosts = true;
+                }
+            }
+        }
+    }
+    
+    var changedCommunities = false;
+    for (var c = 0; c < communities.length; c++) {
+        if (communities[c].owner === '@user') {
+            communities[c].owner = currentUser;
+            changedCommunities = true;
+        }
+    }
+    
+    localStorage.setItem('yaping_currentUser', currentUser);
+    if (changedFeed) saveFeedPosts();
+    if (changedCommunityPosts) saveCommunityPosts();
+    if (changedCommunities) saveCommunities();
+}
+
 // ===== PEER.JS FUNCTIONS =====
 function initializePeer() {
-    // Inisialisasi Peer dengan config lokal
-    peer = new Peer({
-        host: 'localhost',
-        port: 3000,
-        path: '/peerjs'
-    });
+    if (typeof Peer === 'undefined') {
+        console.warn('Peer.js belum dimuat. Feed lokal tetap berjalan.');
+        renderRightSidebar();
+        showToast('⚠️ Mode online belum siap. Post lokal tetap tersimpan.');
+        return;
+    }
     
-    // Fallback ke public server jika lokal tidak tersedia
-    peer.on('error', function(err) {
-        console.log('Local peer server unavailable, using public server');
-        peer = new Peer();
-        peer.on('open', function(id) {
-            peerId = id;
-            broadcastPeerId();
-            startAutoConnect();
-            showToast('✅ Peer siap: ' + id);
-        });
-        peer.on('connection', handleIncomingConnection);
-    });
-    
+    // Pakai PeerJS public cloud supaya semua pengunjung website masuk jaringan Yaping yang sama.
+    createPeerInstance({}, false);
+}
+
+function createPeerInstance(options, allowFallback) {
+    try {
+        peerReady = false;
+        currentPeerOptions = options || {};
+        peer = new Peer(preferredPeerId, options || {});
+        attachPeerEvents(allowFallback);
+        renderRightSidebar();
+    } catch (e) {
+        console.log('Gagal membuat peer:', e);
+        if (allowFallback) {
+            createPublicPeer();
+        }
+    }
+}
+
+function attachPeerEvents(allowFallback) {
     peer.on('open', function(id) {
         peerId = id;
+        peerReady = true;
+        preferredPeerId = id;
+        localStorage.setItem('yaping_preferredPeerId', id);
         console.log('Peer ID: ' + id);
         broadcastPeerId();
         startAutoConnect();
-        showToast('✅ Peer siap: ' + id);
+        startBootstrapDiscovery();
+        renderRightSidebar();
+        showToast('✅ Online siap: ' + id);
     });
     
     peer.on('connection', handleIncomingConnection);
+    
+    peer.on('error', function(err) {
+        console.log('Peer error:', err);
+        
+        if (err && err.type === 'unavailable-id') {
+            preferredPeerId = 'yaping-' + createLocalId('peer').replace(/[^a-zA-Z0-9-]/g, '');
+            localStorage.setItem('yaping_preferredPeerId', preferredPeerId);
+            createPeerInstance({}, allowFallback);
+            return;
+        }
+        
+        if (!peerReady && allowFallback && !peerFallbackStarted) {
+            createPublicPeer();
+            return;
+        }
+        
+        renderRightSidebar();
+    });
+    
+    peer.on('disconnected', function() {
+        peerReady = false;
+        renderRightSidebar();
+    });
+    
+    peer.on('close', function() {
+        peerReady = false;
+        renderRightSidebar();
+    });
+}
+
+function createPublicPeer() {
+    peerFallbackStarted = true;
+    try {
+        if (peer && !peer.destroyed) peer.destroy();
+    } catch (e) {
+        console.log('Gagal menutup peer lokal:', e);
+    }
+    
+    console.log('Local peer server unavailable, using public server');
+    createPeerInstance({}, false);
 }
 
 function broadcastPeerId() {
@@ -182,13 +660,11 @@ function broadcastPeerId() {
     if (peerId) {
         localStorage.setItem('yaping_myPeerId', peerId);
         // Notify connected peers
-        for (var pId in connections) {
-            connections[pId].send({
-                type: 'peer-id',
-                peerId: peerId,
-                user: currentUser
-            });
-        }
+        broadcastPeerMessage({
+            type: 'peer-id',
+            peerId: peerId,
+            user: currentUser
+        });
     }
 }
 
@@ -196,102 +672,488 @@ function startAutoConnect() {
     // Auto-connect ke known peers secara berkala
     if (autoConnectInterval) clearInterval(autoConnectInterval);
     
+    connectToKnownPeers();
     autoConnectInterval = setInterval(function() {
-        // Try to connect to peers yang sudah diketahui tapi belum terhubung
-        for (var i = 0; i < knownPeerIds.length; i++) {
-            var remotePeerId = knownPeerIds[i];
-            if (remotePeerId !== peerId && !connections[remotePeerId]) {
-                console.log('Auto-connecting to: ' + remotePeerId);
-                autoConnectToPeer(remotePeerId);
-            }
-        }
+        connectToKnownPeers();
+        broadcastPeerMessage({
+            type: 'peer-list',
+            knownPeerIds: getShareablePeerIds()
+        });
     }, 5000); // Coba setiap 5 detik
 }
 
-function autoConnectToPeer(remotePeerId) {
-    if (!peer || connections[remotePeerId]) return;
+function startBootstrapDiscovery() {
+    if (bootstrapDiscoveryStarted || !peerReady) return;
+    
+    bootstrapDiscoveryStarted = true;
+    bootstrapStatus = 'mencari jaringan';
+    connectToBootstrapSlots();
+    claimBootstrapSlot(0);
+    
+    if (bootstrapRetryInterval) clearInterval(bootstrapRetryInterval);
+    bootstrapRetryInterval = setInterval(function() {
+        connectToBootstrapSlots();
+        if (!bootstrapReady) {
+            claimBootstrapSlot(0);
+        }
+        renderRightSidebar();
+    }, 15000);
+    
+    renderRightSidebar();
+}
+
+function getBootstrapSlotIds() {
+    var ids = [];
+    for (var i = 1; i <= bootstrapSlotCount; i++) {
+        ids.push(bootstrapRoomName + '-' + i);
+    }
+    return ids;
+}
+
+function isBootstrapPeerId(id) {
+    return !!id && id.indexOf(bootstrapRoomName + '-') === 0;
+}
+
+function connectToBootstrapSlots() {
+    var slots = getBootstrapSlotIds();
+    for (var i = 0; i < slots.length; i++) {
+        autoConnectToPeer(slots[i]);
+    }
+}
+
+function claimBootstrapSlot(index) {
+    if (!peerReady || bootstrapReady || bootstrapClaimInProgress || typeof Peer === 'undefined') return;
+    
+    var slots = getBootstrapSlotIds();
+    if (index >= slots.length) {
+        bootstrapStatus = 'tersambung ke slot publik';
+        renderRightSidebar();
+        return;
+    }
+    
+    var slotId = slots[index];
+    if (slotId === peerId || slotId === bootstrapSlotId) {
+        claimBootstrapSlot(index + 1);
+        return;
+    }
+    
+    bootstrapClaimInProgress = true;
+    bootstrapStatus = 'mencari slot ' + (index + 1) + '/' + slots.length;
+    renderRightSidebar();
+    
+    var slotPeer = null;
+    var finished = false;
+    var timer = null;
+    
+    function tryNextSlot() {
+        if (finished) return;
+        finished = true;
+        bootstrapClaimInProgress = false;
+        if (timer) clearTimeout(timer);
+        try {
+            if (slotPeer && !slotPeer.destroyed) slotPeer.destroy();
+        } catch (e) {
+            console.log('Gagal menutup slot bootstrap:', e);
+        }
+        claimBootstrapSlot(index + 1);
+    }
     
     try {
-        var conn = peer.connect(remotePeerId, { reliable: true });
+        slotPeer = new Peer(slotId, currentPeerOptions || {});
+    } catch (e) {
+        console.log('Gagal membuat slot bootstrap:', e);
+        bootstrapClaimInProgress = false;
+        claimBootstrapSlot(index + 1);
+        return;
+    }
+    
+    timer = setTimeout(function() {
+        tryNextSlot();
+    }, 5000);
+    
+    slotPeer.on('open', function(id) {
+        if (finished) return;
+        finished = true;
+        bootstrapClaimInProgress = false;
+        if (timer) clearTimeout(timer);
         
-        conn.on('open', function() {
-            connections[remotePeerId] = conn;
-            if (activeConnections.indexOf(remotePeerId) === -1) {
-                activeConnections.push(remotePeerId);
-                localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+        bootstrapPeer = slotPeer;
+        bootstrapSlotId = id;
+        bootstrapReady = true;
+        bootstrapStatus = 'slot publik aktif';
+        if (connections[id]) {
+            try {
+                connections[id].close();
+            } catch (e) {
+                console.log('Gagal menutup koneksi ke slot sendiri:', e);
             }
-            console.log('Auto-connected to: ' + remotePeerId);
-            
-            // Broadcast koneksi
-            conn.send({
-                type: 'connection',
-                fromId: peerId,
-                fromUser: currentUser,
-                message: currentUser + ' terhubung otomatis'
-            });
+            delete connections[id];
+            delete pendingConnections[id];
+            forgetActiveConnection(id);
+        }
+        
+        slotPeer.on('connection', function(conn) {
+            wireConnection(conn);
         });
         
-        conn.on('data', function(data) {
-            handlePeerData(data, remotePeerId);
+        slotPeer.on('error', function(err) {
+            console.log('Bootstrap slot error:', err);
         });
         
-        conn.on('error', function(err) {
-            console.log('Connection error to ' + remotePeerId + ':', err);
+        slotPeer.on('close', function() {
+            bootstrapReady = false;
+            bootstrapSlotId = null;
+            bootstrapPeer = null;
+            bootstrapStatus = 'slot terputus';
+            renderRightSidebar();
         });
         
-        conn.on('close', function() {
-            delete connections[remotePeerId];
-            activeConnections = activeConnections.filter(id => id !== remotePeerId);
-            localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
-        });
+        renderRightSidebar();
+    });
+    
+    slotPeer.on('error', function(err) {
+        console.log('Bootstrap slot unavailable:', slotId, err);
+        tryNextSlot();
+    });
+}
+
+function connectToKnownPeers() {
+    // Try to connect to peers yang sudah diketahui tapi belum terhubung
+    var peersToTry = knownPeerIds.concat(activeConnections).concat(getBootstrapSlotIds());
+    for (var i = 0; i < peersToTry.length; i++) {
+        var remotePeerId = peersToTry[i];
+        if (remotePeerId !== peerId && (!connections[remotePeerId] || !connections[remotePeerId].open)) {
+            console.log('Auto-connecting to: ' + remotePeerId);
+            autoConnectToPeer(remotePeerId);
+        }
+    }
+}
+
+function autoConnectToPeer(remotePeerId) {
+    if (!peer || !peerReady || !remotePeerId || remotePeerId === peerId || remotePeerId === bootstrapSlotId) return;
+    if (connections[remotePeerId] && connections[remotePeerId].open) return;
+    if (pendingConnections[remotePeerId]) return;
+    
+    try {
+        pendingConnections[remotePeerId] = true;
+        var conn = peer.connect(remotePeerId, { reliable: true });
+        wireConnection(conn);
     } catch(e) {
+        delete pendingConnections[remotePeerId];
         console.log('Error auto-connecting:', e);
     }
 }
 
 function handlePeerData(data, remotePeerId) {
+    if (!data || !data.type) return;
+    
+    if (data.peerId && data.peerId !== peerId) {
+        rememberPeerId(data.peerId);
+        if (data.peerId !== remotePeerId) {
+            autoConnectToPeer(data.peerId);
+        }
+    }
+    
+    if (Array.isArray(data.knownPeerIds)) {
+        mergeKnownPeerIds(data.knownPeerIds);
+    }
+    
     if (data.type === 'peer-id') {
         // Register known peer
-        if (knownPeerIds.indexOf(data.peerId) === -1) {
-            knownPeerIds.push(data.peerId);
-            localStorage.setItem('yaping_knownPeerIds', JSON.stringify(knownPeerIds));
+        rememberPeerId(data.peerId);
+    } else if (data.type === 'hello' || data.type === 'sync') {
+        mergeCommunities(data.communities);
+        var feedAdded = mergeFeedPosts(data.feedPosts);
+        var communityAdded = mergeCommunityPosts(data.communityPosts);
+        if (feedAdded + communityAdded > 0) {
+            addNotification('Sinkron ' + (feedAdded + communityAdded) + ' postingan dari ' + (data.fromUser || 'teman'), 'sync');
         }
     } else if (data.type === 'post') {
-        addNotification(data.fromUser + ' memposting: ' + data.content.substring(0, 30), 'post');
+        var incomingPost = data.post || data;
+        incomingPost.fromPeerId = data.fromPeerId || remotePeerId;
+        incomingPost.originPeerId = data.fromPeerId || remotePeerId;
+        if (upsertFeedPost(incomingPost, true)) {
+            addNotification((incomingPost.author || data.fromUser || 'Teman') + ' memposting: ' + (incomingPost.content || '').substring(0, 30), 'post');
+            broadcastPeerMessage({ type: 'post', post: incomingPost }, remotePeerId);
+        }
+    } else if (data.type === 'community-post') {
+        mergeCommunities(data.communities);
+        var commPost = data.post || data;
+        var commId = commPost.communityId || data.communityId;
+        commPost.fromPeerId = data.fromPeerId || remotePeerId;
+        commPost.originPeerId = data.fromPeerId || remotePeerId;
+        if (commId && upsertCommunityPost(commId, commPost, true)) {
+            addNotification((commPost.author || data.fromUser || 'Teman') + ' memposting di komunitas', 'comm');
+            broadcastPeerMessage({ type: 'community-post', communityId: commId, post: commPost, communities: data.communities || [] }, remotePeerId);
+        }
+    } else if (data.type === 'delete-post') {
+        if (removeDeletedPost(data)) {
+            broadcastPeerMessage(data, remotePeerId);
+        }
     } else if (data.type === 'connection') {
         addNotification(data.message, 'connection');
+    } else if (data.type === 'peer-list') {
+        mergeKnownPeerIds(data.knownPeerIds);
     }
 }
 
-
-
-
-
-
-
 function handleIncomingConnection(conn) {
-    connections[conn.peer] = conn;
-    if (activeConnections.indexOf(conn.peer) === -1) {
-        activeConnections.push(conn.peer);
-        localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
-    }
+    wireConnection(conn);
+    console.log('Incoming connection from: ' + conn.peer);
+}
+
+function wireConnection(conn) {
+    if (!conn || !conn.peer) return;
     
-    if (knownPeerIds.indexOf(conn.peer) === -1) {
-        knownPeerIds.push(conn.peer);
-        localStorage.setItem('yaping_knownPeerIds', JSON.stringify(knownPeerIds));
-    }
+    connections[conn.peer] = conn;
+    rememberPeerId(conn.peer);
+    var pendingTimer = setTimeout(function() {
+        if (conn && !conn.open) {
+            delete pendingConnections[conn.peer];
+            if (connections[conn.peer] === conn) {
+                delete connections[conn.peer];
+            }
+            renderRightSidebar();
+        }
+    }, 8000);
+    renderRightSidebar();
+    
+    conn.on('open', function() {
+        clearTimeout(pendingTimer);
+        delete pendingConnections[conn.peer];
+        connections[conn.peer] = conn;
+        rememberPeerId(conn.peer);
+        rememberActiveConnection(conn.peer);
+        sendSyncToConnection(conn);
+        conn.send({
+            type: 'peer-list',
+            peerId: peerId,
+            knownPeerIds: getShareablePeerIds()
+        });
+        renderRightSidebar();
+        console.log('Connected to: ' + conn.peer);
+    });
     
     conn.on('data', function(data) {
         handlePeerData(data, conn.peer);
     });
     
-    conn.on('close', function() {
+    conn.on('error', function(err) {
+        console.log('Connection error to ' + conn.peer + ':', err);
+        clearTimeout(pendingTimer);
+        delete pendingConnections[conn.peer];
         delete connections[conn.peer];
-        activeConnections = activeConnections.filter(id => id !== conn.peer);
-        localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+        forgetActiveConnection(conn.peer);
+        renderRightSidebar();
     });
     
-    console.log('Incoming connection from: ' + conn.peer);
+    conn.on('close', function() {
+        clearTimeout(pendingTimer);
+        delete pendingConnections[conn.peer];
+        delete connections[conn.peer];
+        forgetActiveConnection(conn.peer);
+        renderRightSidebar();
+    });
+    
+    if (conn.open) {
+        sendSyncToConnection(conn);
+    }
+}
+
+function rememberPeerId(id) {
+    if (!id || id === peerId || id === bootstrapSlotId) return;
+    if (knownPeerIds.indexOf(id) === -1) {
+        knownPeerIds.push(id);
+        saveStoredJSON('yaping_knownPeerIds', knownPeerIds);
+    }
+}
+
+function mergeKnownPeerIds(ids) {
+    if (!Array.isArray(ids)) return 0;
+    
+    var added = 0;
+    for (var i = 0; i < ids.length; i++) {
+        var before = knownPeerIds.length;
+        rememberPeerId(ids[i]);
+        if (knownPeerIds.length > before) added++;
+    }
+    
+    if (added > 0) {
+        connectToKnownPeers();
+    }
+    return added;
+}
+
+function addUniquePeerId(list, id) {
+    if (!id || id === peerId || isBootstrapPeerId(id)) return;
+    if (list.indexOf(id) === -1) list.push(id);
+}
+
+function getShareablePeerIds() {
+    var ids = [];
+    addUniquePeerId(ids, peerId);
+    
+    for (var i = 0; i < knownPeerIds.length; i++) {
+        addUniquePeerId(ids, knownPeerIds[i]);
+    }
+    
+    for (var j = 0; j < activeConnections.length; j++) {
+        addUniquePeerId(ids, activeConnections[j]);
+    }
+    
+    for (var connId in connections) {
+        if (connections[connId] && connections[connId].open) {
+            addUniquePeerId(ids, connId);
+        }
+    }
+    
+    return ids;
+}
+
+function rememberActiveConnection(id) {
+    if (!id || id === peerId) return;
+    if (activeConnections.indexOf(id) === -1) {
+        activeConnections.push(id);
+        saveStoredJSON('yaping_activeConnections', activeConnections);
+    }
+}
+
+function forgetActiveConnection(id) {
+    activeConnections = activeConnections.filter(function(activeId) {
+        return activeId !== id;
+    });
+    saveStoredJSON('yaping_activeConnections', activeConnections);
+}
+
+function getOpenConnectionCount() {
+    var count = 0;
+    for (var id in connections) {
+        if (connections[id] && connections[id].open) count++;
+    }
+    return count;
+}
+
+function sendSyncToConnection(conn) {
+    if (!conn || !conn.open) return;
+    
+    conn.send({
+        type: 'hello',
+        peerId: peerId,
+        fromUser: currentUser,
+        bootstrapSlotId: bootstrapSlotId,
+        knownPeerIds: getShareablePeerIds(),
+        communities: communities,
+        feedPosts: feedPosts,
+        communityPosts: communityPosts,
+        sentAt: Date.now()
+    });
+}
+
+function broadcastPeerMessage(payload, exceptPeerId) {
+    if (!payload) return;
+    
+    payload.peerId = peerId;
+    payload.fromPeerId = peerId;
+    payload.fromUser = currentUser;
+    payload.knownPeerIds = getShareablePeerIds();
+    payload.sentAt = Date.now();
+    
+    for (var id in connections) {
+        if (id === exceptPeerId) continue;
+        var conn = connections[id];
+        if (conn && conn.open) {
+            try {
+                conn.send(payload);
+            } catch (e) {
+                console.log('Gagal mengirim ke peer ' + id + ':', e);
+            }
+        }
+    }
+}
+
+function connectToPeerFromSidebar() {
+    var input = document.getElementById('peerConnectInput');
+    var remotePeerId = input ? input.value.trim() : '';
+    
+    if (!remotePeerId) {
+        showToast('⚠️ Masukkan Peer ID cadangan dulu.');
+        return;
+    }
+    
+    if (remotePeerId === peerId) {
+        showToast('⚠️ Itu Peer ID kamu sendiri.');
+        return;
+    }
+    
+    rememberPeerId(remotePeerId);
+    autoConnectToPeer(remotePeerId);
+    if (input) input.value = '';
+    showToast('🔄 Menghubungkan ke ' + remotePeerId);
+}
+
+function copyPeerId() {
+    if (!peerId) {
+        showToast('⚠️ Peer ID belum siap.');
+        return;
+    }
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(peerId).then(function() {
+            showToast('✅ Peer ID disalin.');
+        }).catch(function() {
+            fallbackCopyPeerId();
+        });
+    } else {
+        fallbackCopyPeerId();
+    }
+}
+
+function fallbackCopyPeerId() {
+    var input = document.getElementById('myPeerIdInput');
+    if (!input) return;
+    input.select();
+    document.execCommand('copy');
+    showToast('✅ Peer ID disalin.');
+}
+
+function renderRightSidebar() {
+    var sidebar = document.getElementById('right-sidebar');
+    if (!sidebar) return;
+    
+    var peerScriptReady = typeof Peer !== 'undefined';
+    var statusText = peerReady ? 'Online' : (peerScriptReady ? 'Menghubungkan...' : 'Offline');
+    var statusColor = peerReady ? 'var(--fb-green)' : (peerScriptReady ? 'var(--fb-text-light)' : '#c0392b');
+    var networkText = peerReady ? (bootstrapReady ? 'Tersambung otomatis' : bootstrapStatus) : 'menunggu';
+    var connectionCount = getOpenConnectionCount();
+    var connectionText = connectionCount > 0 ? connectionCount : (peerReady ? 'menunggu' : '0');
+    
+    var connectionHTML = '';
+    var hasConnections = false;
+    for (var id in connections) {
+        if (!connections[id] || !connections[id].open) continue;
+        hasConnections = true;
+        connectionHTML += '<div class="connection-item">' +
+            '<div class="connection-info">' +
+                '<div class="connection-id">Peer Yaping</div>' +
+                '<small>tersambung</small>' +
+            '</div>' +
+        '</div>';
+    }
+    
+    if (!hasConnections) {
+        connectionHTML = '<div class="sidebar-empty">Jaringan Yaping sudah aktif. Post akan sinkron otomatis saat ada pengguna lain online.</div>';
+    }
+    
+    sidebar.innerHTML =
+        '<div class="sidebar-box">' +
+            '<div class="sidebar-box-title">Online P2P</div>' +
+            '<div class="sidebar-stat"><span>Status</span><strong style="color:' + statusColor + '">' + statusText + '</strong></div>' +
+            '<div class="sidebar-stat"><span>Jaringan</span><strong>' + escapeHtml(networkText) + '</strong></div>' +
+            '<div class="sidebar-stat"><span>Peer aktif</span><strong>' + escapeHtml(String(connectionText)) + '</strong></div>' +
+            '<div class="peer-connection mt-8">' +
+                '<div class="connections-list">' + connectionHTML + '</div>' +
+            '</div>' +
+        '</div>';
 }
 
 // ===== IMAGE UPLOAD FUNCTIONS =====
@@ -442,7 +1304,7 @@ function renderHashtagPosts(hashtag) {
                 (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image"></div>' : '') +
                 '<div class="post-footer">' +
                     '<div class="post-actions-left">' +
-                        '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + posts[i].commId + ',' + post.id + ')">' + 
+                        '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + posts[i].commId + ',\'' + jsString(post.id) + '\')">' + 
                             (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
                         '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
                     '</div>' +
@@ -558,6 +1420,13 @@ function addCommunity() {
     if (cooldownInfo) cooldownInfo.textContent = '✅ Komunitas dibuat!';
     
     renderCommunities('all');
+    renderRightSidebar();
+    broadcastPeerMessage({
+        type: 'sync',
+        communities: [newComm],
+        feedPosts: [],
+        communityPosts: {}
+    });
     showToast('🎉 Komunitas "' + name + '" berhasil dibuat!');
     
     // Clear cooldown message after 3 seconds
@@ -700,24 +1569,20 @@ function submitCommunityPost(commId) {
     
     // Buat post object
     var newPost = {
-        id: Date.now(),
+        id: createLocalId('comm'),
         communityId: commId,
         author: currentUser,
         content: text,
         likes: 0,
         likedBy: [],
         createdAt: Date.now(),
-        photo: postImage || null
+        photo: postImage || null,
+        originPeerId: peerId || localClientId,
+        scope: 'community'
     };
     
     // Simpan ke communityPosts
-    if (!communityPosts[commId]) {
-        communityPosts[commId] = [];
-    }
-    communityPosts[commId].unshift(newPost);
-    
-    // Simpan ke localStorage
-    saveCommunityPosts();
+    upsertCommunityPost(commId, newPost, true);
     
     // Reset input & update UI
     if (input) input.value = '';
@@ -726,20 +1591,13 @@ function submitCommunityPost(commId) {
     if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan ke ' + comm.name);
     
-    // Re-render feed
-    var feedEl = document.getElementById('comm-posts-feed');
-    if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
-    
     // Broadcast ke connected peers
-    for (var peerId in connections) {
-        connections[peerId].send({
-            type: 'post',
-            fromUser: currentUser,
-            community: comm.name,
-            content: text,
-            createdAt: newPost.createdAt
-        });
-    }
+    broadcastPeerMessage({
+        type: 'community-post',
+        communityId: commId,
+        post: newPost,
+        communities: [comm]
+    });
     
     // Update notifikasi untuk owner komunitas
     if (comm.owner !== currentUser) {
@@ -749,7 +1607,16 @@ function submitCommunityPost(commId) {
 
 // ===== KOMUNITAS: RENDER POSTS =====
 function renderCommunityPosts(commId) {
-    var posts = communityPosts[commId] || [];
+    var posts = [];
+    var rawPosts = communityPosts[commId] || [];
+    for (var n = 0; n < rawPosts.length; n++) {
+        var normalizedPost = normalizePost(rawPosts[n], 'community', commId);
+        if (normalizedPost) posts.push(normalizedPost);
+    }
+    posts.sort(function(a, b) {
+        return b.createdAt - a.createdAt;
+    });
+    communityPosts[commId] = posts;
     
     if (posts.length === 0) {
         return '<div class="sidebar-empty">Belum ada diskusi. Jadilah yang pertama! 🎉</div>';
@@ -759,18 +1626,23 @@ function renderCommunityPosts(commId) {
     for (var i = 0; i < posts.length; i++) {
         var post = posts[i];
         var timeAgo = formatTimeAgo(post.createdAt);
-        var isLiked = post.likedBy.indexOf(currentUser) !== -1;
+        var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+        var isLiked = likedBy.indexOf(currentUser) !== -1;
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteCommunityPost(' + commId + ',\'' + jsString(post.id) + '\')">Hapus</button>' : '';
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
             '<div class="post-card-header">' +
                 '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
-                '<span class="post-timestamp">' + timeAgo + '</span>' +
+                '<span style="display:flex;align-items:center;gap:6px;">' +
+                    '<span class="post-timestamp">' + timeAgo + '</span>' +
+                    deleteButton +
+                '</span>' +
             '</div>' +
             '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
             (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;"></div>' : '') +
             '<div class="post-footer">' +
                 '<div class="post-actions-left">' +
-                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',' + post.id + ')">' + 
+                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',\'' + jsString(post.id) + '\')">' + 
                         (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
                     '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
                 '</div>' +
@@ -788,19 +1660,22 @@ function likeCommunityPost(commId, postId) {
     
     var post = null;
     for (var i = 0; i < posts.length; i++) {
-        if (posts[i].id === postId) {
+        if (String(posts[i].id) === String(postId)) {
             post = posts[i];
             break;
         }
     }
     if (!post) return;
     
+    if (!Array.isArray(post.likedBy)) post.likedBy = [];
+    if (isNaN(parseInt(post.likes, 10))) post.likes = 0;
+    
     var idx = post.likedBy.indexOf(currentUser);
     if (idx === -1) {
         post.likes++;
         post.likedBy.push(currentUser);
     } else {
-        post.likes--;
+        post.likes = Math.max(0, post.likes - 1);
         post.likedBy.splice(idx, 1);
     }
     
@@ -811,6 +1686,44 @@ function likeCommunityPost(commId, postId) {
         var feedEl = document.getElementById('comm-posts-feed');
         if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
     }
+}
+
+function deleteCommunityPost(commId, postId) {
+    var posts = communityPosts[commId];
+    if (!posts) return;
+    
+    var index = findPostIndexById(posts, postId);
+    if (index === -1) return;
+    
+    var post = posts[index];
+    if (!isOwnPost(post)) {
+        showToast('⚠️ Kamu hanya bisa menghapus postingan sendiri.');
+        return;
+    }
+    
+    if (!confirm('Hapus postingan ini?')) return;
+    
+    posts.splice(index, 1);
+    saveCommunityPosts();
+    rebuildHashtags();
+    
+    if (currentViewedCommunity === commId) {
+        var feedEl = document.getElementById('comm-posts-feed');
+        if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
+    }
+    renderMyPosts();
+    updateProfileStats();
+    renderRightSidebar();
+    
+    broadcastPeerMessage({
+        type: 'delete-post',
+        scope: 'community',
+        communityId: commId,
+        postId: postId,
+        originPeerId: post.originPeerId || peerId || localClientId
+    });
+    
+    showToast('🗑️ Postingan dihapus.');
 }
 
 // ===== HOME: SUBMIT POST =====
@@ -826,18 +1739,19 @@ function submitPost() {
     
     // Buat post object
     var newPost = {
-        id: Date.now(),
+        id: createLocalId('feed'),
         author: currentUser,
         content: text,
         likes: 0,
         likedBy: [],
         createdAt: Date.now(),
-        photo: postImage || null
+        photo: postImage || null,
+        originPeerId: peerId || localClientId,
+        scope: 'feed'
     };
     
     // Tambah ke feed
-    feedPosts.unshift(newPost);
-    localStorage.setItem('yaping_feedPosts', JSON.stringify(feedPosts));
+    upsertFeedPost(newPost, true);
     
     // Reset input & hapus preview
     if (input) input.value = '';
@@ -847,19 +1761,11 @@ function submitPost() {
     
     showToast('✅ Postingan dibagikan! 🎉');
     
-    // Re-render feed
-    renderFeed();
-    
     // Broadcast ke connected peers
-    for (var peerId in connections) {
-        connections[peerId].send({
-            type: 'post',
-            fromUser: currentUser,
-            content: text,
-            photo: postImage,
-            createdAt: newPost.createdAt
-        });
-    }
+    broadcastPeerMessage({
+        type: 'post',
+        post: newPost
+    });
 }
 
 // ===== HOME: RENDER FEED =====
@@ -867,22 +1773,13 @@ function renderFeed() {
     var feed = document.getElementById('feed');
     if (!feed) return;
     
-    // Jika belum ada post, tampilkan welcome message
+    feedPosts = normalizeFeedPosts(feedPosts);
+    
+    // Jika belum ada post asli, tampilkan empty state, bukan dummy post.
     if (feedPosts.length === 0) {
         feed.innerHTML = 
-            '<div class="post-card">' +
-                '<div class="post-card-header">' +
-                    '<span class="post-username">@user</span>' +
-                    '<span class="post-timestamp">Baru saja</span>' +
-                '</div>' +
-                '<div class="post-body">Selamat datang di Yaping! 👋 Mulai bagikan pikiranmu atau gabung komunitas menarik.</div>' +
-                '<div class="post-footer">' +
-                    '<div class="post-actions-left">' +
-                        '<button class="like-btn" onclick="showToast(\'❤️ Terima kasih!\')">🤍 0</button>' +
-                        '<button class="comment-btn" onclick="showToast(\'💬 Komentar...\')">💬 Komentar</button>' +
-                    '</div>' +
-                    '<button class="share-btn" onclick="showToast(\'🔗 Dibagikan!\')">🔗 Bagikan</button>' +
-                '</div>' +
+            '<div class="content-box">' +
+                '<div class="sidebar-empty">Belum ada postingan asli. Tulis post pertama kamu di atas.</div>' +
             '</div>';
         return;
     }
@@ -892,12 +1789,17 @@ function renderFeed() {
     for (var i = 0; i < feedPosts.length; i++) {
         var post = feedPosts[i];
         var timeAgo = formatTimeAgo(post.createdAt);
-        var isLiked = post.likedBy.indexOf(currentUser) !== -1;
+        var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+        var isLiked = likedBy.indexOf(currentUser) !== -1;
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
             '<div class="post-card-header">' +
                 '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
-                '<span class="post-timestamp">' + timeAgo + '</span>' +
+                '<span style="display:flex;align-items:center;gap:6px;">' +
+                    '<span class="post-timestamp">' + timeAgo + '</span>' +
+                    deleteButton +
+                '</span>' +
             '</div>' +
             '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
             (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;"></div>' : '') +
@@ -917,34 +1819,125 @@ function renderFeed() {
 function likeFeedPost(index) {
     if (feedPosts[index]) {
         var post = feedPosts[index];
+        if (!Array.isArray(post.likedBy)) post.likedBy = [];
+        if (isNaN(parseInt(post.likes, 10))) post.likes = 0;
+        
         var idx = post.likedBy.indexOf(currentUser);
         if (idx === -1) {
             post.likes++;
             post.likedBy.push(currentUser);
         } else {
-            post.likes--;
+            post.likes = Math.max(0, post.likes - 1);
             post.likedBy.splice(idx, 1);
         }
-        localStorage.setItem('yaping_feedPosts', JSON.stringify(feedPosts));
+        saveFeedPosts();
         renderFeed();
+        updateProfileStats();
     }
+}
+
+function deleteFeedPost(postId) {
+    var index = findPostIndexById(feedPosts, postId);
+    if (index === -1) return;
+    
+    var post = feedPosts[index];
+    if (!isOwnPost(post)) {
+        showToast('⚠️ Kamu hanya bisa menghapus postingan sendiri.');
+        return;
+    }
+    
+    if (!confirm('Hapus postingan ini?')) return;
+    
+    feedPosts.splice(index, 1);
+    saveFeedPosts();
+    rebuildHashtags();
+    renderFeed();
+    renderMyPosts();
+    updateProfileStats();
+    renderRightSidebar();
+    
+    broadcastPeerMessage({
+        type: 'delete-post',
+        scope: 'feed',
+        postId: postId,
+        originPeerId: post.originPeerId || peerId || localClientId
+    });
+    
+    showToast('🗑️ Postingan dihapus.');
 }
 
 // ===== PROFILE: RENDER MY POSTS =====
 function renderMyPosts() {
     var feed = document.getElementById('my-posts-feed');
     if (!feed) return;
-    feed.innerHTML = '<div class="sidebar-empty">Kamu belum memiliki postingan. Yuk mulai berbagi! ✨</div>';
+    
+    var myPosts = [];
+    for (var i = 0; i < feedPosts.length; i++) {
+        if (feedPosts[i].author === currentUser) {
+            myPosts.push(feedPosts[i]);
+        }
+    }
+    
+    if (myPosts.length === 0) {
+        feed.innerHTML = '<div class="sidebar-empty">Kamu belum memiliki postingan. Yuk mulai berbagi! ✨</div>';
+        return;
+    }
+    
+    var html = '';
+    for (var j = 0; j < myPosts.length; j++) {
+        var post = myPosts[j];
+        var feedIndex = findPostIndexById(feedPosts, post.id);
+        var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+        var isLiked = likedBy.indexOf(currentUser) !== -1;
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
+        
+        html += '<div class="post-card" style="margin-bottom:8px;">' +
+            '<div class="post-card-header">' +
+                '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
+                '<span style="display:flex;align-items:center;gap:6px;">' +
+                    '<span class="post-timestamp">' + formatTimeAgo(post.createdAt) + '</span>' +
+                    deleteButton +
+                '</span>' +
+            '</div>' +
+            '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
+            (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image"></div>' : '') +
+            '<div class="post-footer">' +
+                '<div class="post-actions-left">' +
+                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(' + feedIndex + ')">' +
+                        (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
+                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                '</div>' +
+                '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
+            '</div>' +
+        '</div>';
+    }
+    
+    feed.innerHTML = html;
 }
 
 // ===== PROFILE: UPDATE STATS =====
 function updateProfileStats() {
     var el;
+    var myPostCount = 0;
+    var likesGiven = 0;
+    
+    for (var f = 0; f < feedPosts.length; f++) {
+        if (feedPosts[f].author === currentUser) myPostCount++;
+        if (Array.isArray(feedPosts[f].likedBy) && feedPosts[f].likedBy.indexOf(currentUser) !== -1) likesGiven++;
+    }
+    
+    for (var commId in communityPosts) {
+        var posts = communityPosts[commId] || [];
+        for (var p = 0; p < posts.length; p++) {
+            if (posts[p].author === currentUser) myPostCount++;
+            if (Array.isArray(posts[p].likedBy) && posts[p].likedBy.indexOf(currentUser) !== -1) likesGiven++;
+        }
+    }
     
     el = document.getElementById('pi-username'); if (el) el.textContent = currentUser;
-    el = document.getElementById('pi-fullname'); if (el) el.textContent = 'Pengguna Yaping';
-    el = document.getElementById('pi-posts'); if (el) el.textContent = '0';
-    el = document.getElementById('pi-likes'); if (el) el.textContent = '0';
+    el = document.getElementById('pi-fullname'); if (el) el.textContent = currentFullname;
+    el = document.getElementById('pi-posts'); if (el) el.textContent = myPostCount;
+    el = document.getElementById('pi-likes'); if (el) el.textContent = likesGiven;
     
     var myComms = 0;
     for (var i = 0; i < communities.length; i++) {
@@ -954,6 +1947,7 @@ function updateProfileStats() {
     
     el = document.getElementById('sidebar-username'); if (el) el.textContent = currentUser;
     el = document.getElementById('profile-username-display'); if (el) el.textContent = currentUser;
+    el = document.getElementById('profile-fullname-display'); if (el) el.textContent = currentFullname;
 }
 
 // ===== PROFILE: SWITCH SECTION =====
@@ -987,8 +1981,8 @@ function showProfileSection(section, btn) {
     if (section === 'edit') {
         // Load current values
         var el = document.getElementById('edit-username'); if (el) el.value = currentUser;
-        el = document.getElementById('edit-fullname'); if (el) el.value = 'Pengguna Yaping';
-        el = document.getElementById('edit-bio'); if (el) el.value = '';
+        el = document.getElementById('edit-fullname'); if (el) el.value = currentFullname;
+        el = document.getElementById('edit-bio'); if (el) el.value = currentBio;
         var sec = document.getElementById('profile-edit-section');
         if (sec) sec.classList.remove('hidden');
     }
@@ -998,19 +1992,22 @@ function showProfileSection(section, btn) {
 function saveProfile() {
     var elUser = document.getElementById('edit-username');
     var elName = document.getElementById('edit-fullname');
+    var elBio = document.getElementById('edit-bio');
     
     var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
     var newFullname = elName ? (elName.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
+    var newBio = elBio ? elBio.value.trim() : '';
     
     currentUser = newUsername;
+    currentFullname = newFullname;
+    currentBio = newBio;
+    localStorage.setItem('yaping_currentUser', currentUser);
+    localStorage.setItem('yaping_currentFullname', currentFullname);
+    localStorage.setItem('yaping_currentBio', currentBio);
     
     // Update display
-    var els = ['sidebar-username', 'profile-username-display', 'pi-username'];
-    for (var i = 0; i < els.length; i++) {
-        var el = document.getElementById(els[i]);
-        if (el) el.textContent = currentUser;
-    }
-    el = document.getElementById('pi-fullname'); if (el) el.textContent = newFullname;
+    updateProfileStats();
+    renderRightSidebar();
     
     showToast('✅ Profil berhasil diperbarui!');
     showProfileSection('info', document.querySelector('.profile-tab-btn'));
@@ -1032,8 +2029,15 @@ function changeFontSize(size) {
 // ===== SETTINGS: CLEAR POSTS =====
 function clearAllPosts() {
     if (confirm('Hapus semua postingan? Tindakan ini tidak bisa dibatalkan!')) {
+        feedPosts = [];
         communityPosts = {};
+        saveFeedPosts();
         saveCommunityPosts();
+        rebuildHashtags();
+        renderFeed();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
         showToast('🗑️ Semua postingan dihapus!');
         if (currentViewedCommunity) {
             var feedEl = document.getElementById('comm-posts-feed');
@@ -1132,15 +2136,15 @@ function showToast(message) {
 }
 
 function saveCommunities() {
-    localStorage.setItem('yaping_communities', JSON.stringify(communities));
+    saveStoredJSON('yaping_communities', communities);
 }
 
 function saveCommunityPosts() {
-    localStorage.setItem('yaping_communityPosts', JSON.stringify(communityPosts));
+    saveStoredJSON('yaping_communityPosts', communityPosts);
 }
 
 function saveJoinedCommunities() {
-    localStorage.setItem('yaping_joinedCommunities', JSON.stringify(joinedCommunities));
+    saveStoredJSON('yaping_joinedCommunities', joinedCommunities);
 }
 
 function formatTimeAgo(timestamp) {
