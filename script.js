@@ -12,13 +12,31 @@ let communities = JSON.parse(localStorage.getItem('yaping_communities')) || [
 
 let communityPosts = JSON.parse(localStorage.getItem('yaping_communityPosts')) || {};
 let joinedCommunities = JSON.parse(localStorage.getItem('yaping_joinedCommunities')) || [1];
+let feedPosts = JSON.parse(localStorage.getItem('yaping_feedPosts')) || [];
 let currentUser = '@user';
 let lastCommunityCreate = localStorage.getItem('yaping_lastCommCreate') || 0;
 let emojiTargetInput = 'postInput';
 let currentViewedCommunity = null;
+let postImage = null;
+
+// Peer.js Configuration
+let peer = null;
+let peerId = null;
+let connections = {};
+let activeConnections = JSON.parse(localStorage.getItem('yaping_activeConnections')) || [];
+let knownPeerIds = JSON.parse(localStorage.getItem('yaping_knownPeerIds')) || [];
+
+// Hashtags tracking
+let allHashtags = new Set();
+
+// Auto-connect interval
+let autoConnectInterval = null;
 
 // ===== INISIALISASI =====
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Peer.js
+    initializePeer();
+    
     // Set active state on topbar for home tab
     var homeNavLink = document.getElementById('nav-home');
     if (homeNavLink) homeNavLink.classList.add('active-nav');
@@ -95,6 +113,7 @@ function switchToTab(tabName) {
         if ((tabName === 'home' && linkText.indexOf('beranda') !== -1) ||
             (tabName === 'komunitas' && linkText.indexOf('komunitas') !== -1) ||
             (tabName === 'profile' && linkText.indexOf('profil') !== -1) ||
+            (tabName === 'connections' && linkText.indexOf('koneksi') !== -1) ||
             (tabName === 'settings' && linkText.indexOf('pengaturan') !== -1)) {
             sidebarLinks[k].classList.add('active-sidebar');
             break;
@@ -109,6 +128,8 @@ function switchToTab(tabName) {
         renderMyPosts();
     } else if (tabName === 'home') {
         renderFeed();
+    } else if (tabName === 'hashtags') {
+        renderHashtags();
     } else if (tabName === 'settings') {
         // Settings tab hanya perlu ditampilkan
     }
@@ -121,6 +142,317 @@ function switchToTab(tabName) {
     if (tabName !== 'community-detail') {
         currentViewedCommunity = null;
     }
+}
+
+// ===== PEER.JS FUNCTIONS =====
+function initializePeer() {
+    // Inisialisasi Peer dengan config lokal
+    peer = new Peer({
+        host: 'localhost',
+        port: 3000,
+        path: '/peerjs'
+    });
+    
+    // Fallback ke public server jika lokal tidak tersedia
+    peer.on('error', function(err) {
+        console.log('Local peer server unavailable, using public server');
+        peer = new Peer();
+        peer.on('open', function(id) {
+            peerId = id;
+            broadcastPeerId();
+            startAutoConnect();
+            showToast('✅ Peer siap: ' + id);
+        });
+        peer.on('connection', handleIncomingConnection);
+    });
+    
+    peer.on('open', function(id) {
+        peerId = id;
+        console.log('Peer ID: ' + id);
+        broadcastPeerId();
+        startAutoConnect();
+        showToast('✅ Peer siap: ' + id);
+    });
+    
+    peer.on('connection', handleIncomingConnection);
+}
+
+function broadcastPeerId() {
+    // Store peer ID di local storage untuk auto-discovery
+    if (peerId) {
+        localStorage.setItem('yaping_myPeerId', peerId);
+        // Notify connected peers
+        for (var pId in connections) {
+            connections[pId].send({
+                type: 'peer-id',
+                peerId: peerId,
+                user: currentUser
+            });
+        }
+    }
+}
+
+function startAutoConnect() {
+    // Auto-connect ke known peers secara berkala
+    if (autoConnectInterval) clearInterval(autoConnectInterval);
+    
+    autoConnectInterval = setInterval(function() {
+        // Try to connect to peers yang sudah diketahui tapi belum terhubung
+        for (var i = 0; i < knownPeerIds.length; i++) {
+            var remotePeerId = knownPeerIds[i];
+            if (remotePeerId !== peerId && !connections[remotePeerId]) {
+                console.log('Auto-connecting to: ' + remotePeerId);
+                autoConnectToPeer(remotePeerId);
+            }
+        }
+    }, 5000); // Coba setiap 5 detik
+}
+
+function autoConnectToPeer(remotePeerId) {
+    if (!peer || connections[remotePeerId]) return;
+    
+    try {
+        var conn = peer.connect(remotePeerId, { reliable: true });
+        
+        conn.on('open', function() {
+            connections[remotePeerId] = conn;
+            if (activeConnections.indexOf(remotePeerId) === -1) {
+                activeConnections.push(remotePeerId);
+                localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+            }
+            console.log('Auto-connected to: ' + remotePeerId);
+            
+            // Broadcast koneksi
+            conn.send({
+                type: 'connection',
+                fromId: peerId,
+                fromUser: currentUser,
+                message: currentUser + ' terhubung otomatis'
+            });
+        });
+        
+        conn.on('data', function(data) {
+            handlePeerData(data, remotePeerId);
+        });
+        
+        conn.on('error', function(err) {
+            console.log('Connection error to ' + remotePeerId + ':', err);
+        });
+        
+        conn.on('close', function() {
+            delete connections[remotePeerId];
+            activeConnections = activeConnections.filter(id => id !== remotePeerId);
+            localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+        });
+    } catch(e) {
+        console.log('Error auto-connecting:', e);
+    }
+}
+
+function handlePeerData(data, remotePeerId) {
+    if (data.type === 'peer-id') {
+        // Register known peer
+        if (knownPeerIds.indexOf(data.peerId) === -1) {
+            knownPeerIds.push(data.peerId);
+            localStorage.setItem('yaping_knownPeerIds', JSON.stringify(knownPeerIds));
+        }
+    } else if (data.type === 'post') {
+        addNotification(data.fromUser + ' memposting: ' + data.content.substring(0, 30), 'post');
+    } else if (data.type === 'connection') {
+        addNotification(data.message, 'connection');
+    }
+}
+
+
+
+
+
+
+
+function handleIncomingConnection(conn) {
+    connections[conn.peer] = conn;
+    if (activeConnections.indexOf(conn.peer) === -1) {
+        activeConnections.push(conn.peer);
+        localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+    }
+    
+    if (knownPeerIds.indexOf(conn.peer) === -1) {
+        knownPeerIds.push(conn.peer);
+        localStorage.setItem('yaping_knownPeerIds', JSON.stringify(knownPeerIds));
+    }
+    
+    conn.on('data', function(data) {
+        handlePeerData(data, conn.peer);
+    });
+    
+    conn.on('close', function() {
+        delete connections[conn.peer];
+        activeConnections = activeConnections.filter(id => id !== conn.peer);
+        localStorage.setItem('yaping_activeConnections', JSON.stringify(activeConnections));
+    });
+    
+    console.log('Incoming connection from: ' + conn.peer);
+}
+
+// ===== IMAGE UPLOAD FUNCTIONS =====
+function triggerImageUpload() {
+    var input = document.getElementById('imageUpload');
+    if (input) input.click();
+}
+
+function handleImageUpload(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    
+    // Validasi ukuran file (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showToast('⚠️ Ukuran file terlalu besar (max 5MB)');
+        return;
+    }
+    
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        postImage = e.target.result;
+        var preview = document.getElementById('post-preview-img');
+        var img = document.getElementById('post-img-preview');
+        if (preview && img) {
+            img.src = postImage;
+            preview.style.display = 'block';
+            showToast('✅ Gambar berhasil diunggah!');
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+function removePostImage() {
+    postImage = null;
+    var preview = document.getElementById('post-preview-img');
+    var input = document.getElementById('imageUpload');
+    if (preview) preview.style.display = 'none';
+    if (input) input.value = '';
+}
+
+// ===== HASHTAG FUNCTIONS =====
+function parseHashtags(text) {
+    var hashtags = [];
+    var regex = /#[a-zA-Z0-9_]+/g;
+    var matches = text.match(regex);
+    if (matches) {
+        for (var i = 0; i < matches.length; i++) {
+            hashtags.push(matches[i]);
+            allHashtags.add(matches[i]);
+        }
+    }
+    return hashtags;
+}
+
+function parsePostWithHashtags(text) {
+    var hashtags = parseHashtags(text);
+    var html = escapeHtml(text);
+    
+    // Replace hashtags with blue links
+    for (var i = 0; i < hashtags.length; i++) {
+        var tag = hashtags[i];
+        var encoded = tag.replace(/#/, '%23');
+        html = html.replace(
+            new RegExp('\\' + tag + '(?!\\w)', 'g'),
+            '<a href="#" class="hashtag-link" onclick="viewHashtag(\'' + tag + '\'); return false;">' + tag + '</a>'
+        );
+    }
+    
+    return html;
+}
+
+function viewHashtag(hashtag) {
+    switchToTab('hashtags');
+    renderHashtagPosts(hashtag);
+}
+
+function renderHashtags() {
+    var list = document.getElementById('hashtagsList');
+    if (!list) return;
+    
+    if (allHashtags.size === 0) {
+        list.innerHTML = '<div class="sidebar-empty">Belum ada hashtag digunakan</div>';
+        return;
+    }
+    
+    var html = '';
+    var hashtags = Array.from(allHashtags).sort();
+    
+    for (var i = 0; i < hashtags.length; i++) {
+        var tag = hashtags[i];
+        html += '<div class="hashtag-item" onclick="viewHashtag(\'' + tag + '\')">' +
+            '<div class="hashtag-name">' + escapeHtml(tag) + '</div>' +
+        '</div>';
+    }
+    list.innerHTML = html;
+}
+
+function renderHashtagPosts(hashtag) {
+    var list = document.getElementById('hashtagsList');
+    if (!list) return;
+    
+    var html = '<div class="content-box" style="margin-bottom:10px;">' +
+        '<a class="back-link" onclick="renderHashtags();return false;">← Kembali</a>' +
+        '<div class="hashtag-title">' + escapeHtml(hashtag) + '</div>' +
+    '</div>';
+    
+    // Search posts dengan hashtag ini
+    var posts = [];
+    
+    // Dari community posts
+    for (var commId in communityPosts) {
+        var commPostList = communityPosts[commId] || [];
+        for (var i = 0; i < commPostList.length; i++) {
+            if (commPostList[i].content.indexOf(hashtag) !== -1) {
+                posts.push({
+                    type: 'community',
+                    post: commPostList[i],
+                    commId: parseInt(commId)
+                });
+            }
+        }
+    }
+    
+    // Sort by date
+    posts.sort(function(a, b) {
+        return b.post.createdAt - a.post.createdAt;
+    });
+    
+    if (posts.length === 0) {
+        html += '<div class="sidebar-empty">Belum ada postingan dengan hashtag ini</div>';
+        list.innerHTML = html;
+        return;
+    }
+    
+    // Render posts
+    for (var i = 0; i < posts.length; i++) {
+        var post = posts[i].post;
+        var timeAgo = formatTimeAgo(post.createdAt);
+        var isLiked = post.likedBy.indexOf(currentUser) !== -1;
+        
+        html += '<div class="content-box">' +
+            '<div class="post-card">' +
+                '<div class="post-card-header">' +
+                    '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
+                    '<span class="post-timestamp">' + timeAgo + '</span>' +
+                '</div>' +
+                '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
+                (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image"></div>' : '') +
+                '<div class="post-footer">' +
+                    '<div class="post-actions-left">' +
+                        '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + posts[i].commId + ',' + post.id + ')">' + 
+                            (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
+                        '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                    '</div>' +
+                    '<button class="share-btn" onclick="showToast(\'🔗 Dibagikan!\')">🔗 Bagikan</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }
+    
+    list.innerHTML = html;
 }
 
 // ===== KOMUNITAS: RENDER DAFTAR =====
@@ -375,7 +707,7 @@ function submitCommunityPost(commId) {
         likes: 0,
         likedBy: [],
         createdAt: Date.now(),
-        photo: null
+        photo: postImage || null
     };
     
     // Simpan ke communityPosts
@@ -389,11 +721,25 @@ function submitCommunityPost(commId) {
     
     // Reset input & update UI
     if (input) input.value = '';
+    postImage = null;
+    var preview = document.getElementById('post-preview-img');
+    if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan ke ' + comm.name);
     
     // Re-render feed
     var feedEl = document.getElementById('comm-posts-feed');
     if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
+    
+    // Broadcast ke connected peers
+    for (var peerId in connections) {
+        connections[peerId].send({
+            type: 'post',
+            fromUser: currentUser,
+            community: comm.name,
+            content: text,
+            createdAt: newPost.createdAt
+        });
+    }
     
     // Update notifikasi untuk owner komunitas
     if (comm.owner !== currentUser) {
@@ -420,7 +766,8 @@ function renderCommunityPosts(commId) {
                 '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
                 '<span class="post-timestamp">' + timeAgo + '</span>' +
             '</div>' +
-            '<div class="post-body">' + escapeHtml(post.content) + '</div>' +
+            '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
+            (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;"></div>' : '') +
             '<div class="post-footer">' +
                 '<div class="post-actions-left">' +
                     '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',' + post.id + ')">' + 
@@ -477,12 +824,42 @@ function submitPost() {
         return;
     }
     
-    // Buat post object (bisa dikembangkan untuk simpan ke localStorage)
-    showToast('✅ Postingan dibagikan! 🎉');
+    // Buat post object
+    var newPost = {
+        id: Date.now(),
+        author: currentUser,
+        content: text,
+        likes: 0,
+        likedBy: [],
+        createdAt: Date.now(),
+        photo: postImage || null
+    };
+    
+    // Tambah ke feed
+    feedPosts.unshift(newPost);
+    localStorage.setItem('yaping_feedPosts', JSON.stringify(feedPosts));
+    
+    // Reset input & hapus preview
     if (input) input.value = '';
+    postImage = null;
+    var preview = document.getElementById('post-preview-img');
+    if (preview) preview.style.display = 'none';
+    
+    showToast('✅ Postingan dibagikan! 🎉');
     
     // Re-render feed
     renderFeed();
+    
+    // Broadcast ke connected peers
+    for (var peerId in connections) {
+        connections[peerId].send({
+            type: 'post',
+            fromUser: currentUser,
+            content: text,
+            photo: postImage,
+            createdAt: newPost.createdAt
+        });
+    }
 }
 
 // ===== HOME: RENDER FEED =====
@@ -490,8 +867,8 @@ function renderFeed() {
     var feed = document.getElementById('feed');
     if (!feed) return;
     
-    // Placeholder untuk demo
-    if (!feed.innerHTML.trim() || feed.innerHTML.indexOf('placeholder') !== -1) {
+    // Jika belum ada post, tampilkan welcome message
+    if (feedPosts.length === 0) {
         feed.innerHTML = 
             '<div class="post-card">' +
                 '<div class="post-card-header">' +
@@ -507,6 +884,49 @@ function renderFeed() {
                     '<button class="share-btn" onclick="showToast(\'🔗 Dibagikan!\')">🔗 Bagikan</button>' +
                 '</div>' +
             '</div>';
+        return;
+    }
+    
+    // Render semua posts dari feedPosts
+    var html = '';
+    for (var i = 0; i < feedPosts.length; i++) {
+        var post = feedPosts[i];
+        var timeAgo = formatTimeAgo(post.createdAt);
+        var isLiked = post.likedBy.indexOf(currentUser) !== -1;
+        
+        html += '<div class="post-card" style="margin-bottom:8px;">' +
+            '<div class="post-card-header">' +
+                '<span class="post-username">' + escapeHtml(post.author) + '</span>' +
+                '<span class="post-timestamp">' + timeAgo + '</span>' +
+            '</div>' +
+            '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
+            (post.photo ? '<div class="post-image"><img src="' + post.photo + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;"></div>' : '') +
+            '<div class="post-footer">' +
+                '<div class="post-actions-left">' +
+                    '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(' + i + ')">' + 
+                        (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
+                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                '</div>' +
+                '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
+            '</div>' +
+        '</div>';
+    }
+    feed.innerHTML = html;
+}
+
+function likeFeedPost(index) {
+    if (feedPosts[index]) {
+        var post = feedPosts[index];
+        var idx = post.likedBy.indexOf(currentUser);
+        if (idx === -1) {
+            post.likes++;
+            post.likedBy.push(currentUser);
+        } else {
+            post.likes--;
+            post.likedBy.splice(idx, 1);
+        }
+        localStorage.setItem('yaping_feedPosts', JSON.stringify(feedPosts));
+        renderFeed();
     }
 }
 
