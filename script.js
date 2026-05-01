@@ -5,9 +5,9 @@
 
 // ===== DATA & STATE =====
 let communities = JSON.parse(localStorage.getItem('yaping_communities')) || [
-    { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now() },
-    { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000 },
-    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000 }
+    { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: 'system', createdAt: Date.now() },
+    { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: 'system', createdAt: Date.now() - 86400000 },
+    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: 'system', createdAt: Date.now() - 172800000 }
 ];
 
 let communityPosts = JSON.parse(localStorage.getItem('yaping_communityPosts')) || {};
