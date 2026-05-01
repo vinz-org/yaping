@@ -756,4 +756,179 @@ function showModal(title, content) {
     if (titleEl) titleEl.textContent = title;
     if (bodyEl) bodyEl.innerHTML = content;
     if (overlay) overlay.classList.remove('hidden');
+
+    // ===== STATE & CONFIG =====
+let selectedImageBase64 = null;
+let currentUser = '@user';
+let posts = JSON.parse(localStorage.getItem('yaping_posts')) || [];
+let swarm = null;
+
+// ===== INISIALISASI P2P (Simulasi/Pear.js) =====
+async function initP2P() {
+    const statusEl = document.getElementById('p2p-status');
+    try {
+        // Pear.js / Hyperswarm global modules
+        const Hyperswarm = require('hyperswarm');
+        const crypto = require('hypercore-id-encoding');
+        
+        swarm = new Hyperswarm();
+        const topic = Buffer.alloc(32).fill('yaping-social-p2p-v1');
+        swarm.join(topic);
+
+        swarm.on('connection', (conn) => {
+            if (statusEl) statusEl.textContent = 'Terhubung';
+            
+            // Kirim postingan kita ke teman yang baru konek
+            conn.write(JSON.stringify({ type: 'sync_all', data: posts }));
+
+            conn.on('data', data => {
+                const msg = JSON.parse(data.toString());
+                if (msg.type === 'new_post') {
+                    receiveNewPost(msg.data);
+                } else if (msg.type === 'sync_all') {
+                    mergePosts(msg.data);
+                }
+            });
+        });
+    } catch (e) {
+        if (statusEl) statusEl.textContent = 'Mode Lokal (Offline)';
+        console.warn("Dijalankan di luar runtime Pear.js - Fitur P2P dinonaktifkan");
+    }
+}
+
+// ===== HASHTAG & TAB LOGIC =====
+function formatContent(text) {
+    if (!text) return '';
+    let safe = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return safe.replace(/#(\w+)/g, '<a href="#" class="hashtag" onclick="filterByHashtag(\'$1\'); return false;">#$1</a>');
+}
+
+function switchToTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+    document.getElementById(tabName + '-tab').classList.remove('hidden');
+}
+
+function filterByHashtag(tag) {
+    const searchInput = document.getElementById('searchInput');
+    searchInput.value = '#' + tag;
+    doSearch();
+}
+
+function doSearch() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    renderFeed(query);
+}
+
+// ===== IMAGE LOGIC =====
+function handleImageSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            selectedImageBase64 = e.target.result;
+            document.getElementById('imagePreview').src = selectedImageBase64;
+            document.getElementById('imagePreviewContainer').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeSelectedImage() {
+    selectedImageBase64 = null;
+    document.getElementById('imageUpload').value = '';
+    document.getElementById('imagePreviewContainer').classList.add('hidden');
+}
+
+// ===== POSTING LOGIC =====
+function submitPost() {
+    const input = document.getElementById('postInput');
+    const content = input.value.trim();
+
+    if (!content && !selectedImageBase64) return;
+
+    const newPost = {
+        id: Date.now(),
+        author: currentUser,
+        content: content,
+        image: selectedImageBase64,
+        createdAt: Date.now()
+    };
+
+    posts.unshift(newPost);
+    saveAndRender();
+    
+    if (swarm) {
+        for (const conn of swarm.connections) {
+            conn.write(JSON.stringify({ type: 'new_post', data: newPost }));
+        }
+    }
+
+    input.value = '';
+    removeSelectedImage();
+}
+
+function receiveNewPost(post) {
+    if (!posts.find(p => p.id === post.id)) {
+        posts.unshift(post);
+        saveAndRender();
+        showToast(`Postingan baru dari ${post.author}`);
+    }
+}
+
+function mergePosts(remotePosts) {
+    let changed = false;
+    remotePosts.forEach(rp => {
+        if (!posts.find(p => p.id === rp.id)) {
+            posts.push(rp);
+            changed = true;
+        }
+    });
+    if (changed) {
+        posts.sort((a, b) => b.createdAt - a.createdAt);
+        saveAndRender();
+    }
+}
+
+// ===== RENDER LOGIC =====
+function renderFeed(filter = '') {
+    const feedEl = document.getElementById('feed');
+    if (!feedEl) return;
+
+    let html = '';
+    const filteredPosts = posts.filter(p => 
+        p.content.toLowerCase().includes(filter) || 
+        p.author.toLowerCase().includes(filter)
+    );
+
+    filteredPosts.forEach(post => {
+        let imgHtml = post.image ? `<img src="${post.image}" class="post-image-content">` : '';
+        html += `
+            <div class="content-box post-card">
+                <div style="font-weight:bold; color:#3b5998; margin-bottom:5px;">${post.author}</div>
+                <div style="font-size:13px; margin-bottom:8px;">${formatContent(post.content)}</div>
+                ${imgHtml}
+                <div style="font-size:10px; color:#999; margin-top:8px;">${new Date(post.createdAt).toLocaleString()}</div>
+            </div>
+        `;
+    });
+    feedEl.innerHTML = html || '<div class="content-box">Belum ada postingan.</div>';
+}
+
+function saveAndRender() {
+    localStorage.setItem('yaping_posts', JSON.stringify(posts));
+    renderFeed();
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+// Inisialisasi saat halaman dimuat
+document.addEventListener('DOMContentLoaded', () => {
+    initP2P();
+    renderFeed();
+});
 }
