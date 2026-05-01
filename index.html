@@ -4,16 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <title>Yaping </title>
+    <title>Yaping - Jaringan Sosial</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Tahoma:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Peer.js untuk P2P Connection -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
 <!-- TOP HEADER (Facebook-style blue bar) -->
 <div id="topbar">
     <div id="topbar-inner">
-        <div id="logo">Yaping</div>
+        <div id="logo">yaping</div>
         <div id="topbar-search">
             <input type="text" placeholder="Cari teman, komunitas..." id="searchInput">
             <button onclick="doSearch()">Cari</button>
@@ -64,10 +66,15 @@
             <div class="content-box create-post-box">
                 <div class="create-post-header">Apa yang kamu pikirkan hari ini?</div>
                 <textarea id="postInput" placeholder="Tulis sesuatu di sini..."></textarea>
+                <div id="post-preview-img" class="post-preview-img" style="display:none;">
+                    <img id="post-img-preview" src="" alt="preview">
+                    <button class="close-img-btn" onclick="removePostImage()">✕</button>
+                </div>
                 <div class="create-post-footer">
                     <div class="post-options">
                         <button class="option-btn" onclick="addEmoji()">😊 Emoji</button>
-                        <button class="option-btn" onclick="addPhoto()">📷 Foto</button>
+                        <button class="option-btn" onclick="triggerImageUpload()">📷 Foto</button>
+                        <input type="file" id="imageUpload" accept="image/*" style="display:none;" onchange="handleImageUpload(event)">
                     </div>
                     <button id="postBtn" class="primary-btn" onclick="submitPost()">Bagikan</button>
                 </div>
@@ -245,6 +252,16 @@
         <!-- COMMUNITY DETAIL VIEW -->
         <div id="community-detail-tab" class="tab-content hidden">
             <!-- Rendered dynamically -->
+        </div>
+
+        <!-- TAB: HASHTAGS -->
+        <div id="hashtags-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">🏷️ Topik Hashtag</div>
+                <div id="hashtagsList" class="hashtags-list">
+                    <div class="sidebar-empty">Belum ada hashtag</div>
+                </div>
+            </div>
         </div>
 
     </div>
