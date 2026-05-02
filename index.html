@@ -73,8 +73,8 @@
                 <div class="create-post-footer">
                     <div class="post-options">
                         <button class="option-btn" onclick="addEmoji()">😊 Emoji</button>
-                        <button class="option-btn" onclick="triggerImageUpload()">📷 Foto</button>
-                        <input type="file" id="imageUpload" accept="image/*" style="display:none;" onchange="handleImageUpload(event)">
+                        <button class="option-btn" onclick="triggerMediaUpload()">📹 Media (MP3/MP4/Foto)</button>
+                        <input type="file" id="mediaUpload" accept=".mp3,.mp4,image/*" style="display:none;" onchange="handleMediaUpload(event)">
                     </div>
                     <button id="postBtn" class="primary-btn" onclick="submitPost()">Bagikan</button>
                 </div>
