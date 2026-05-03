@@ -56,9 +56,7 @@ function makePeerUsername(id) {
 
 // ===== DATA & STATE =====
 let communities = loadStoredJSON('yaping_communities', [
-    { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now(), banner: '#4472CA' },
-    { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000, banner: '#70AD47' },
-    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000, banner: '#FFC000' }
+    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@vin', createdAt: Date.now() - 172800000, banner: '#FFC000' }
 ]);
 
 let communityPosts = loadStoredJSON('yaping_communityPosts', {});
