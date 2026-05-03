@@ -236,6 +236,66 @@ function setSecurityBan(reason) {
     return banData;
 }
 
+function getSecurityNetworkText(banData) {
+    banData = banData || {};
+    var ip = banData.publicIp || 'memuat...';
+    var isp = banData.publicIsp || 'memuat...';
+    return ' • IP address: ' + ip + ' • ISP: ' + isp;
+}
+
+function updateSecurityNetworkDisplay(banData) {
+    var el = document.getElementById('security-network-info');
+    if (!el) return;
+    el.textContent = getSecurityNetworkText(banData);
+}
+
+function saveSecurityNetworkInfo(ip, isp) {
+    var banData = getSecurityBanData();
+    if (!banData) return;
+
+    banData.publicIp = ip || 'tidak tersedia';
+    banData.publicIsp = isp || 'tidak tersedia';
+    banData.networkCapturedAt = Date.now();
+    saveStoredJSON(SECURITY_BAN_KEY, banData);
+    updateSecurityNetworkDisplay(banData);
+}
+
+function fetchSecurityNetworkInfo() {
+    var banData = getSecurityBanData();
+    if (!banData || (banData.publicIp && banData.publicIsp)) {
+        updateSecurityNetworkDisplay(banData);
+        return;
+    }
+
+    if (typeof fetch !== 'function') {
+        saveSecurityNetworkInfo('tidak tersedia', 'tidak tersedia');
+        return;
+    }
+
+    fetch('https://ipapi.co/json/')
+        .then(function(response) {
+            if (!response.ok) throw new Error('ipapi gagal');
+            return response.json();
+        })
+        .then(function(data) {
+            saveSecurityNetworkInfo(data.ip, data.org || data.asn || 'tidak tersedia');
+        })
+        .catch(function() {
+            fetch('https://ipwho.is/')
+                .then(function(response) {
+                    if (!response.ok) throw new Error('ipwhois gagal');
+                    return response.json();
+                })
+                .then(function(data) {
+                    var isp = data.connection && (data.connection.isp || data.connection.org);
+                    saveSecurityNetworkInfo(data.ip, isp || 'tidak tersedia');
+                })
+                .catch(function() {
+                    saveSecurityNetworkInfo('tidak tersedia', 'tidak tersedia');
+                });
+        });
+}
+
 function resetComposerInputs() {
     var input = document.getElementById('postInput');
     var commInput = document.getElementById('communityPostInput');
@@ -298,15 +358,16 @@ function showSecurityBanScreen() {
     document.body.innerHTML =
         '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f2f5;font-family:Tahoma,Arial,sans-serif;padding:20px;">' +
             '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:22px;text-align:center;">' +
-                '<div style="font-size:42px;margin-bottom:10px;">🚫</div>' +
+                '<div style="font-size:42px;margin-bottom:10px;">🚫✋</div>' +
                 '<h1 style="font-size:20px;color:#b00020;margin:0 0 10px;">Akun Diblokir</h1>' +
                 '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(SECURITY_BAN_MESSAGE) + '</p>' +
                 '<div id="security-ban-timer" style="font-size:13px;font-weight:bold;color:#b00020;margin-bottom:8px;"></div>' +
                 '<div style="font-size:12px;color:#555;margin-bottom:12px;">Ban berakhir: ' + escapeHtml(expiresDate.toLocaleString('id-ID')) + '</div>' +
-                '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '</div>' +
+                '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '<span id="security-network-info">' + escapeHtml(getSecurityNetworkText(banData)) + '</span></div>' +
             '</div>' +
         '</div>';
     startSecurityBanCountdown(expiresAt);
+    fetchSecurityNetworkInfo();
 }
 
 function formatRemainingBanTime(ms) {
