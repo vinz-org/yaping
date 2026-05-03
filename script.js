@@ -70,12 +70,51 @@ let currentViewedCommunity = null;
 let communityBeingEdited = null;
 let postMedia = null;
 let postMediaType = null; // 'image', 'audio', 'video'
+let openComments = {}; // postId -> boolean, melacak komentar yang sedang terbuka
+let badgedUsers = new Set(); // username yang memiliki badge resmi
+
+// ===== BADGE SYSTEM =====
+function loadBadgeList() {
+    badgedUsers.clear();
+
+    // Baca dari badge.js (variable global YAPING_BADGE_USERS)
+    var list = (typeof YAPING_BADGE_USERS !== 'undefined') ? YAPING_BADGE_USERS : [];
+    for (var i = 0; i < list.length; i++) {
+        var u = list[i].trim();
+        if (u) badgedUsers.add(u);
+    }
+
+    if (badgedUsers.size > 0) {
+        console.log('[Badge] Dimuat untuk: ' + Array.from(badgedUsers).join(', '));
+        // Re-render supaya badge langsung tampil
+        renderFeed();
+        renderCommunities('all');
+        if (currentViewedCommunity) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
+        }
+        updateProfileStats();
+    }
+}
+
+function getBadgeHTML(username) {
+    if (!username || !badgedUsers.has(username)) return '';
+    return '<img src="badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
+}
+
+function getUserDisplayHTML(username) {
+    return '<span class="username-with-badge">' +
+        escapeHtml(username) +
+        getBadgeHTML(username) +
+    '</span>';
+}
 let localClientId = getOrCreateStoredValue('yaping_clientId', 'client');
 let preferredPeerId = localStorage.getItem('yaping_preferredPeerId') || ('yaping-' + localClientId.replace(/[^a-zA-Z0-9-]/g, ''));
 let storedCurrentUser = localStorage.getItem('yaping_currentUser');
 let currentUser = (!storedCurrentUser || storedCurrentUser === '@user') ? makePeerUsername(preferredPeerId) : storedCurrentUser;
 let currentFullname = localStorage.getItem('yaping_currentFullname') || 'Pengguna Yaping';
 let currentBio = localStorage.getItem('yaping_currentBio') || '';
+let currentUserPhoto = localStorage.getItem('yaping_currentUserPhoto') || ''; // Base64 encoded image
 
 // Peer.js Configuration
 let peer = null;
@@ -130,9 +169,14 @@ document.addEventListener('DOMContentLoaded', function() {
     renderFeed();
     renderRightSidebar();
     updateProfileStats();
+    renderProfileAvatar();
+    renderSidebarProfilePic();
 
     // Initialize Peer.js setelah UI lokal tampil, supaya feed tetap muncul walau CDN/server online lambat.
     initializePeer();
+    
+    // Muat daftar badge resmi dari badge.env
+    loadBadgeList();
     
     // Setup search
     var searchInput = document.getElementById('searchInput');
@@ -244,7 +288,8 @@ function normalizePost(raw, scope, communityId) {
         media: raw.media || null,
         mediaType: raw.mediaType || null,
         originPeerId: raw.originPeerId || raw.fromPeerId || null,
-        scope: scope || raw.scope || 'feed'
+        scope: scope || raw.scope || 'feed',
+        comments: Array.isArray(raw.comments) ? raw.comments : []
     };
     
     if (communityId !== undefined && communityId !== null) {
@@ -396,6 +441,88 @@ function mergeCommunityPosts(postsByCommunity) {
     }
     
     if (added > 0) {
+        if (currentViewedCommunity) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
+        }
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    return added;
+}
+
+// Merge posts DAN komentar dari peer (dipakai saat sync hello)
+function mergeCommentsIntoPost(localPost, incomingComments) {
+    if (!Array.isArray(incomingComments) || incomingComments.length === 0) return false;
+    if (!Array.isArray(localPost.comments)) localPost.comments = [];
+    var changed = false;
+    for (var i = 0; i < incomingComments.length; i++) {
+        var ic = incomingComments[i];
+        if (!ic || !ic.id) continue;
+        var found = false;
+        for (var j = 0; j < localPost.comments.length; j++) {
+            if (localPost.comments[j].id === ic.id) { found = true; break; }
+        }
+        if (!found) {
+            localPost.comments.push(ic);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function mergeFeedPostsWithComments(posts) {
+    if (!Array.isArray(posts)) return 0;
+    var added = 0;
+    var commentsMerged = false;
+    for (var i = 0; i < posts.length; i++) {
+        var incoming = posts[i];
+        if (!incoming) continue;
+        var existingIdx = findPostIndexById(feedPosts, incoming.id);
+        if (existingIdx === -1) {
+            // Post baru, tambahkan
+            if (upsertFeedPost(incoming, false)) added++;
+        } else {
+            // Post sudah ada - merge komentarnya saja
+            if (mergeCommentsIntoPost(feedPosts[existingIdx], incoming.comments)) {
+                commentsMerged = true;
+            }
+        }
+    }
+    if (added > 0 || commentsMerged) {
+        if (commentsMerged) saveFeedPosts();
+        renderFeed();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    return added;
+}
+
+function mergeCommunityPostsWithComments(postsByCommunity) {
+    if (!postsByCommunity) return 0;
+    var added = 0;
+    var commentsMerged = false;
+    for (var commId in postsByCommunity) {
+        var list = postsByCommunity[commId];
+        if (!Array.isArray(list)) continue;
+        for (var i = 0; i < list.length; i++) {
+            var incoming = list[i];
+            if (!incoming) continue;
+            if (!communityPosts[commId]) communityPosts[commId] = [];
+            var existingIdx = findPostIndexById(communityPosts[commId], incoming.id);
+            if (existingIdx === -1) {
+                if (upsertCommunityPost(commId, incoming, false)) added++;
+            } else {
+                if (mergeCommentsIntoPost(communityPosts[commId][existingIdx], incoming.comments)) {
+                    commentsMerged = true;
+                }
+            }
+        }
+    }
+    if (added > 0 || commentsMerged) {
+        if (commentsMerged) saveCommunityPosts();
         if (currentViewedCommunity) {
             var feedEl = document.getElementById('comm-posts-feed');
             if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
@@ -867,8 +994,8 @@ function handlePeerData(data, remotePeerId) {
         rememberPeerId(data.peerId);
     } else if (data.type === 'hello' || data.type === 'sync') {
         mergeCommunities(data.communities);
-        var feedAdded = mergeFeedPosts(data.feedPosts);
-        var communityAdded = mergeCommunityPosts(data.communityPosts);
+        var feedAdded = mergeFeedPostsWithComments(data.feedPosts);
+        var communityAdded = mergeCommunityPostsWithComments(data.communityPosts);
         if (feedAdded + communityAdded > 0) {
             addNotification('Sinkron ' + (feedAdded + communityAdded) + ' postingan dari ' + (data.fromUser || 'teman'), 'sync');
         }
@@ -894,11 +1021,71 @@ function handlePeerData(data, remotePeerId) {
         if (removeDeletedPost(data)) {
             broadcastPeerMessage(data, remotePeerId);
         }
+    } else if (data.type === 'new-comment') {
+        // Terima komentar baru dari peer lain
+        applyIncomingComment(data, remotePeerId);
     } else if (data.type === 'connection') {
         addNotification(data.message, 'connection');
     } else if (data.type === 'peer-list') {
         mergeKnownPeerIds(data.knownPeerIds);
     }
+}
+
+function applyIncomingComment(data, remotePeerId) {
+    if (!data || !data.postId || !data.comment) return false;
+    var comment = data.comment;
+    // Cegah komentar duplikat
+    if (!comment.id) return false;
+
+    var changed = false;
+    if (data.scope === 'community' && data.commId) {
+        var cPosts = communityPosts[data.commId] || [];
+        for (var i = 0; i < cPosts.length; i++) {
+            if (String(cPosts[i].id) === String(data.postId)) {
+                if (!Array.isArray(cPosts[i].comments)) cPosts[i].comments = [];
+                // Cek duplikat berdasarkan comment id
+                var alreadyHas = false;
+                for (var d = 0; d < cPosts[i].comments.length; d++) {
+                    if (cPosts[i].comments[d].id === comment.id) { alreadyHas = true; break; }
+                }
+                if (!alreadyHas) {
+                    cPosts[i].comments.push(comment);
+                    changed = true;
+                }
+                break;
+            }
+        }
+        if (changed) {
+            saveCommunityPosts();
+            if (currentViewedCommunity === parseInt(data.commId, 10)) {
+                var feedEl = document.getElementById('comm-posts-feed');
+                if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(data.commId, 10));
+            }
+            // Teruskan ke peer lain
+            broadcastPeerMessage(data, remotePeerId);
+        }
+    } else {
+        var idx = findPostIndexById(feedPosts, data.postId);
+        if (idx !== -1) {
+            if (!Array.isArray(feedPosts[idx].comments)) feedPosts[idx].comments = [];
+            var alreadyHasFeed = false;
+            for (var e = 0; e < feedPosts[idx].comments.length; e++) {
+                if (feedPosts[idx].comments[e].id === comment.id) { alreadyHasFeed = true; break; }
+            }
+            if (!alreadyHasFeed) {
+                feedPosts[idx].comments.push(comment);
+                changed = true;
+            }
+        }
+        if (changed) {
+            saveFeedPosts();
+            renderFeed();
+            renderMyPosts();
+            // Teruskan ke peer lain
+            broadcastPeerMessage(data, remotePeerId);
+        }
+    }
+    return changed;
 }
 
 function handleIncomingConnection(conn) {
@@ -1249,6 +1436,194 @@ function removePostImage() {
     if (input) input.value = '';
 }
 
+function handleProfilePhotoUpload(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+
+    // Validasi ukuran file (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showToast('Ukuran foto terlalu besar (maksimal 5MB)');
+        return;
+    }
+
+    // Validasi tipe file
+    var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+        showToast('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP');
+        return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var photoData = e.target.result;
+        currentUserPhoto = photoData;
+        
+        // Show preview
+        var preview = document.getElementById('photo-preview');
+        var container = document.getElementById('photo-preview-container');
+        if (preview && container) {
+            preview.src = photoData;
+            container.style.display = 'block';
+        }
+        
+        // Update profile avatar
+        renderProfileAvatar();
+        renderSidebarProfilePic();
+        
+        showToast('Foto profil dipilih. Klik "Simpan Perubahan" untuk menyimpan.');
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderProfileAvatar() {
+    var avatarEl = document.getElementById('profile-avatar-big');
+    if (!avatarEl) return;
+    
+    if (currentUserPhoto) {
+        avatarEl.innerHTML = '<img src="' + currentUserPhoto + '" class="profile-photo" alt="Foto Profil">';
+        avatarEl.classList.add('has-photo');
+    } else {
+        avatarEl.innerHTML = '👤';
+        avatarEl.classList.remove('has-photo');
+    }
+}
+
+function renderSidebarProfilePic() {
+    var sidebarPic = document.querySelector('.sidebar-profile-pic');
+    if (!sidebarPic) return;
+    
+    if (currentUserPhoto) {
+        sidebarPic.innerHTML = '<img src="' + currentUserPhoto + '" alt="Foto Profil">';
+        sidebarPic.classList.add('has-photo');
+    } else {
+        sidebarPic.innerHTML = '👤';
+        sidebarPic.classList.remove('has-photo');
+    }
+}
+
+function getPostUserPhotoHTML(author) {
+    if (author === currentUser && currentUserPhoto) {
+        return '<img src="' + currentUserPhoto + '" class="post-user-photo" alt="Foto">';
+    }
+    return '<span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;">👤</span>';
+}
+
+// ===== KOMENTAR =====
+function toggleComments(postId, scope, commId) {
+    openComments[postId] = !openComments[postId];
+    if (scope === 'community' && commId) {
+        var feedEl = document.getElementById('comm-posts-feed');
+        if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+    } else if (scope === 'my-posts') {
+        renderMyPosts();
+    } else {
+        renderFeed();
+    }
+}
+
+function submitComment(postId, scope, commId) {
+    var inputEl = document.getElementById('cmt-input-' + postId);
+    var text = inputEl ? inputEl.value.trim() : '';
+    if (!text) { showToast('⚠️ Tulis komentar dulu!'); return; }
+    if (text.length > 500) { showToast('❌ Komentar terlalu panjang (max 500 karakter)'); return; }
+
+    var comment = {
+        id: createLocalId('cmt'),
+        author: currentUser,
+        content: text,
+        createdAt: Date.now()
+    };
+
+    if (scope === 'community' && commId) {
+        var cPosts = communityPosts[commId] || [];
+        for (var i = 0; i < cPosts.length; i++) {
+            if (String(cPosts[i].id) === String(postId)) {
+                if (!Array.isArray(cPosts[i].comments)) cPosts[i].comments = [];
+                cPosts[i].comments.push(comment);
+                break;
+            }
+        }
+        saveCommunityPosts();
+        openComments[postId] = true;
+        var feedEl = document.getElementById('comm-posts-feed');
+        if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+        // Broadcast ke peer
+        broadcastPeerMessage({
+            type: 'new-comment',
+            postId: postId,
+            scope: 'community',
+            commId: commId,
+            comment: comment
+        });
+    } else {
+        var idx = findPostIndexById(feedPosts, postId);
+        if (idx !== -1) {
+            if (!Array.isArray(feedPosts[idx].comments)) feedPosts[idx].comments = [];
+            feedPosts[idx].comments.push(comment);
+            saveFeedPosts();
+            openComments[postId] = true;
+            if (scope === 'my-posts') {
+                renderMyPosts();
+            } else {
+                renderFeed();
+            }
+            // Broadcast ke peer
+            broadcastPeerMessage({
+                type: 'new-comment',
+                postId: postId,
+                scope: 'feed',
+                commId: null,
+                comment: comment
+            });
+        }
+    }
+    showToast('✅ Komentar ditambahkan!');
+}
+
+function renderCommentSection(post, scope, commId) {
+    var postId = post.id;
+    var comments = Array.isArray(post.comments) ? post.comments : [];
+    var isOpen = openComments[postId] ? true : false;
+
+    var scopeArg = "'" + scope + "'";
+    var commArg = commId ? (',' + commId) : '';
+    var toggleCall = 'toggleComments(\'' + jsString(postId) + '\',' + scopeArg + commArg + ')';
+    var submitCall = 'submitComment(\'' + jsString(postId) + '\',' + scopeArg + commArg + ')';
+
+    var html = '';
+
+    if (isOpen) {
+        html += '<div class="comment-section">';
+        // Input area
+        html += '<div class="comment-input-row">' +
+            '<span style="font-size:18px;line-height:1;">👤</span>' +
+            '<input type="text" id="cmt-input-' + jsString(postId) + '" class="comment-input" placeholder="Tulis komentar..." ' +
+            'onkeypress="if(event.key===\'Enter\'){' + submitCall + ';event.preventDefault();}" maxlength="500">' +
+            '<button class="comment-submit-btn" onclick="' + submitCall + '">Kirim</button>' +
+        '</div>';
+
+        // Comment list
+        if (comments.length > 0) {
+            html += '<div class="comment-list">';
+            for (var i = 0; i < comments.length; i++) {
+                var c = comments[i];
+                html += '<div class="comment-item">' +
+                    '<strong>' + escapeHtml(c.author) + '</strong>' + getBadgeHTML(c.author) + ' ' +
+                    escapeHtml(c.content) +
+                    '<span class="comment-meta"> · ' + formatTimeAgo(c.createdAt) + '</span>' +
+                '</div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div style="font-size:11px;color:#999;padding:4px 0 2px;">Belum ada komentar. Jadilah yang pertama!</div>';
+        }
+
+        html += '</div>';
+    }
+
+    return html;
+}
+
 // ===== HASHTAG FUNCTIONS =====
 function countWords(text) {
     if (!text) return 0;
@@ -1288,20 +1663,56 @@ function parsePostWithHashtags(text) {
 }
 
 function viewUserProfile(username) {
-    // Ganti user sementara untuk melihat profil
-    var previousUser = currentUser;
-    var previousFullname = currentFullname;
-    var previousBio = currentBio;
-    
-    localStorage.setItem('yaping_currentUser', username);
-    localStorage.setItem('yaping_currentFullname', username);
-    localStorage.setItem('yaping_currentBio', '');
-    
-    currentUser = username;
-    currentFullname = username;
-    currentBio = '';
-    
-    switchToTab('profile');
+    // Jika username adalah diri sendiri, langsung ke tab profil
+    if (username === currentUser) {
+        switchToTab('profile');
+        return;
+    }
+
+    // Kumpulkan post milik user ini dari feed
+    var userPosts = [];
+    for (var i = 0; i < feedPosts.length; i++) {
+        if (feedPosts[i].author === username) userPosts.push(feedPosts[i]);
+    }
+    // Kumpulkan juga dari community posts
+    for (var commId in communityPosts) {
+        var cPosts = communityPosts[commId] || [];
+        for (var j = 0; j < cPosts.length; j++) {
+            if (cPosts[j].author === username) userPosts.push(cPosts[j]);
+        }
+    }
+    userPosts.sort(function(a, b) { return b.createdAt - a.createdAt; });
+
+    var postsHtml = '';
+    if (userPosts.length === 0) {
+        postsHtml = '<div class="sidebar-empty" style="padding:10px 0;">Belum ada postingan.</div>';
+    } else {
+        var limit = Math.min(userPosts.length, 5);
+        for (var k = 0; k < limit; k++) {
+            var p = userPosts[k];
+            var preview = p.content ? p.content.substring(0, 100) + (p.content.length > 100 ? '…' : '') : '(media)';
+            postsHtml += '<div style="padding:7px 0;border-bottom:1px solid #e8edf5;">' +
+                '<div style="font-size:11px;color:#777;">' + formatTimeAgo(p.createdAt) + '</div>' +
+                '<div style="font-size:12px;margin-top:3px;">' + escapeHtml(preview) + '</div>' +
+            '</div>';
+        }
+        if (userPosts.length > 5) {
+            postsHtml += '<div style="font-size:11px;color:#3b5998;padding-top:6px;">+' + (userPosts.length - 5) + ' postingan lainnya</div>';
+        }
+    }
+
+    var content =
+        '<div style="text-align:center;padding:12px 0 16px;">' +
+            '<div style="font-size:52px;line-height:1;">👤</div>' +
+            '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '</div>' +
+            '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' +
+        '</div>' +
+        '<div style="border-top:1px solid #d8dfea;padding-top:10px;">' +
+            '<div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' +
+            postsHtml +
+        '</div>';
+
+    showModal('Profil ' + username, content);
 }
 
 function viewHashtag(hashtag) {
@@ -1405,7 +1816,7 @@ function renderHashtagPosts(hashtag) {
         html += '<div class="content-box">' +
             '<div class="post-card">' +
                 '<div class="post-card-header">' +
-                    '<span class="post-username" style="cursor:pointer;color:#0066cc;text-decoration:underline;" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + escapeHtml(post.author) + '</span>' +
+                    '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span>' +
                     '<span class="post-timestamp">' + timeAgo + '</span>' +
                 '</div>' +
                 '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
@@ -1414,7 +1825,7 @@ function renderHashtagPosts(hashtag) {
                     '<div class="post-actions-left">' +
                         '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="' + (posts[i].type === 'feed' ? 'likeFeedPost' : 'likeCommunityPost') + '(' + (posts[i].type === 'community' ? posts[i].commId + ',' : '') + '\'' + jsString(post.id) + '\')">' + 
                             (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
-                        '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                        '<button class="comment-btn" onclick="showToast(\'💬 Buka postingan untuk komentar!\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button>' +
                     '</div>' +
                     '<button class="share-btn" onclick="showToast(\'🔗 Dibagikan!\')">🔗 Bagikan</button>' +
                 '</div>' +
@@ -1799,10 +2210,13 @@ function renderCommunityPosts(commId) {
         }
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
-            '<div class="post-card-header">' +
-                '<span class="post-username" style="cursor:pointer;color:#0066cc;text-decoration:underline;" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + escapeHtml(post.author) + '</span>' +
+            '<div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;">' +
+                '<div style="display:flex;align-items:center;gap:6px;">' +
+                    getPostUserPhotoHTML(post.author) +
+                    '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span>' +
+                '</div>' +
                 opBadge +
-                '<span style="display:flex;align-items:center;gap:6px;">' +
+                '<span style="display:flex;align-items:center;gap:6px;margin-left:auto;">' +
                     '<span class="post-timestamp">' + timeAgo + '</span>' +
                     deleteButton +
                 '</span>' +
@@ -1813,10 +2227,11 @@ function renderCommunityPosts(commId) {
                 '<div class="post-actions-left">' +
                     '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',\'' + jsString(post.id) + '\')">' + 
                         (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
-                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                    '<button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'community\',' + commId + ')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button>' +
                 '</div>' +
                 '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
             '</div>' +
+            renderCommentSection(post, 'community', commId) +
         '</div>';
     }
     return html;
@@ -2136,9 +2551,12 @@ function renderFeed() {
         }
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
-            '<div class="post-card-header">' +
-                '<span class="post-username" style="cursor:pointer;color:#0066cc;text-decoration:underline;" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + escapeHtml(post.author) + '</span>' +
-                '<span style="display:flex;align-items:center;gap:6px;">' +
+            '<div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;">' +
+                '<div style="display:flex;align-items:center;gap:6px;">' +
+                    getPostUserPhotoHTML(post.author) +
+                    '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span>' +
+                '</div>' +
+                '<span style="display:flex;align-items:center;gap:6px;margin-left:auto;">' +
                     '<span class="post-timestamp">' + timeAgo + '</span>' +
                     deleteButton +
                 '</span>' +
@@ -2149,10 +2567,11 @@ function renderFeed() {
                 '<div class="post-actions-left">' +
                     '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + 
                         (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
-                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                    '<button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button>' +
                 '</div>' +
                 '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
             '</div>' +
+            renderCommentSection(post, 'feed', null) +
         '</div>';
     }
     feed.innerHTML = html;
@@ -2268,7 +2687,7 @@ function renderMyPosts() {
         
         html += '<div class="post-card" style="margin-bottom:8px;">' +
             '<div class="post-card-header">' +
-                '<span class="post-username" style="cursor:pointer;color:#0066cc;text-decoration:underline;" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + escapeHtml(post.author) + '</span>' +
+                '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span>' +
                 '<span style="display:flex;align-items:center;gap:6px;">' +
                     '<span class="post-timestamp">' + formatTimeAgo(post.createdAt) + '</span>' +
                     deleteButton +
@@ -2280,10 +2699,11 @@ function renderMyPosts() {
                 '<div class="post-actions-left">' +
                     '<button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' +
                         (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button>' +
-                    '<button class="comment-btn" onclick="showToast(\'💬 Fitur komentar segera hadir!\')">💬 Komentar</button>' +
+                    '<button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'my-posts\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button>' +
                 '</div>' +
                 '<button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button>' +
             '</div>' +
+            renderCommentSection(post, 'my-posts', null) +
         '</div>';
     }
     
@@ -2320,9 +2740,13 @@ function updateProfileStats() {
     }
     el = document.getElementById('pi-comms'); if (el) el.textContent = myComms;
     
-    el = document.getElementById('sidebar-username'); if (el) el.textContent = currentUser;
-    el = document.getElementById('profile-username-display'); if (el) el.textContent = currentUser;
-    el = document.getElementById('profile-fullname-display'); if (el) el.textContent = currentFullname;
+    // Sidebar & profile header — tampilkan badge jika ada
+    el = document.getElementById('sidebar-username');
+    if (el) el.innerHTML = escapeHtml(currentUser) + getBadgeHTML(currentUser);
+    el = document.getElementById('profile-username-display');
+    if (el) el.innerHTML = escapeHtml(currentUser) + getBadgeHTML(currentUser);
+    el = document.getElementById('profile-fullname-display');
+    if (el) el.textContent = currentFullname;
 }
 
 // ===== PROFILE: SWITCH SECTION =====
@@ -2358,6 +2782,17 @@ function showProfileSection(section, btn) {
         var el = document.getElementById('edit-username'); if (el) el.value = currentUser;
         el = document.getElementById('edit-fullname'); if (el) el.value = currentFullname;
         el = document.getElementById('edit-bio'); if (el) el.value = currentBio;
+        
+        // Show photo preview if exists
+        if (currentUserPhoto) {
+            var preview = document.getElementById('photo-preview');
+            var container = document.getElementById('photo-preview-container');
+            if (preview && container) {
+                preview.src = currentUserPhoto;
+                container.style.display = 'block';
+            }
+        }
+        
         var sec = document.getElementById('profile-edit-section');
         if (sec) sec.classList.remove('hidden');
     }
@@ -2380,9 +2815,17 @@ function saveProfile() {
     localStorage.setItem('yaping_currentFullname', currentFullname);
     localStorage.setItem('yaping_currentBio', currentBio);
     
+    // Save profile photo if updated
+    if (currentUserPhoto) {
+        localStorage.setItem('yaping_currentUserPhoto', currentUserPhoto);
+    }
+    
     // Update display
+    renderProfileAvatar();
+    renderSidebarProfilePic();
     updateProfileStats();
     renderRightSidebar();
+    renderFeed();
     
     showToast('✅ Profil berhasil diperbarui!');
     showProfileSection('info', document.querySelector('.profile-tab-btn'));
