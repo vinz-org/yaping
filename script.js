@@ -4,6 +4,9 @@
 // ============================================
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
+var SECURITY_BAN_KEY = 'yaping_securityBan';
+var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
+
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
     var map = {
@@ -110,6 +113,185 @@ function formatPostContent(content) {
     }
 
     return html.replace(/\n/g, '<br>');
+}
+
+function decodeSecurityScanText(text) {
+    text = String(text || '');
+    var decoded = text;
+
+    try {
+        decoded = decodeURIComponent(text);
+    } catch (e) {
+        decoded = text;
+    }
+
+    return (text + '\n' + decoded)
+        .replace(/&lt;|&#60;|&#x3c;/gi, '<')
+        .replace(/&gt;|&#62;|&#x3e;/gi, '>')
+        .replace(/&quot;|&#34;|&#x22;/gi, '"')
+        .replace(/&#39;|&#x27;|&apos;/gi, "'")
+        .replace(/&colon;|&#58;|&#x3a;/gi, ':');
+}
+
+function hasXSSAttempt(value) {
+    if (value === null || value === undefined) return false;
+
+    var scan = decodeSecurityScanText(value).toLowerCase();
+    var compact = scan.replace(/[\u0000-\u001F\u007F\s]+/g, '');
+
+    var patterns = [
+        /<\s*\/?\s*script\b/i,
+        /<\s*\/?\s*(iframe|object|embed|svg|math|meta|link|base|form)\b/i,
+        /<\s*[a-z][^>]*\son[a-z]+\s*=/i,
+        /\son[a-z]+\s*=/i,
+        /srcdoc\s*=/i,
+        /(href|src|xlink:href)\s*=\s*["']?\s*(javascript|vbscript)\s*:/i,
+        /(javascript|vbscript)\s*:/i,
+        /data\s*:\s*text\/html/i,
+        /expression\s*\(/i,
+        /url\s*\(\s*["']?\s*javascript\s*:/i,
+        /document\s*\.\s*(cookie|write|location)/i,
+        /window\s*\.\s*(location|open)/i,
+        /eval\s*\(/i,
+        /settimeout\s*\(\s*["']/i,
+        /setinterval\s*\(\s*["']/i
+    ];
+
+    for (var i = 0; i < patterns.length; i++) {
+        if (patterns[i].test(scan)) return true;
+    }
+
+    return compact.indexOf('<script') !== -1 ||
+        compact.indexOf('javascript:') !== -1 ||
+        compact.indexOf('vbscript:') !== -1 ||
+        compact.indexOf('data:text/html') !== -1;
+}
+
+function postHasXSSAttempt(post) {
+    if (!post) return false;
+    if (hasXSSAttempt(post.content) || hasXSSAttempt(post.author)) return true;
+    if (hasXSSAttempt(post.media) || hasXSSAttempt(post.photo)) return true;
+
+    var comments = Array.isArray(post.comments) ? post.comments : [];
+    for (var i = 0; i < comments.length; i++) {
+        if (commentHasXSSAttempt(comments[i])) return true;
+    }
+
+    return false;
+}
+
+function commentHasXSSAttempt(comment) {
+    if (!comment) return false;
+    return hasXSSAttempt(comment.content) || hasXSSAttempt(comment.author);
+}
+
+function isSecurityBanned() {
+    return localStorage.getItem(SECURITY_BAN_KEY) ? true : false;
+}
+
+function getSecurityBanData() {
+    return loadStoredJSON(SECURITY_BAN_KEY, null);
+}
+
+function setSecurityBan(reason) {
+    var banData = {
+        reason: reason || 'xss-attempt',
+        username: localStorage.getItem('yaping_currentUser') || '@user',
+        clientId: localStorage.getItem('yaping_clientId') || 'local-browser',
+        createdAt: Date.now()
+    };
+    saveStoredJSON(SECURITY_BAN_KEY, banData);
+    return banData;
+}
+
+function resetComposerInputs() {
+    var input = document.getElementById('postInput');
+    var commInput = document.getElementById('communityPostInput');
+    var preview = document.getElementById('post-preview-img');
+    var commPreview = document.getElementById('community-post-preview-img');
+    var mediaInput = document.getElementById('mediaUpload');
+    var commMediaInput = document.getElementById('communityMediaUpload');
+
+    if (input) input.value = '';
+    if (commInput) commInput.value = '';
+    if (preview) preview.style.display = 'none';
+    if (commPreview) commPreview.style.display = 'none';
+    if (mediaInput) mediaInput.value = '';
+    if (commMediaInput) commMediaInput.value = '';
+
+    postMedia = null;
+    postMediaType = null;
+}
+
+function purgeXSSAttemptsFromStorage() {
+    var changedFeed = false;
+    if (Array.isArray(feedPosts)) {
+        var cleanFeed = [];
+        for (var i = 0; i < feedPosts.length; i++) {
+            if (postHasXSSAttempt(feedPosts[i])) {
+                changedFeed = true;
+            } else {
+                cleanFeed.push(feedPosts[i]);
+            }
+        }
+        feedPosts = cleanFeed;
+    }
+
+    var changedCommunity = false;
+    if (communityPosts) {
+        for (var commId in communityPosts) {
+            var posts = Array.isArray(communityPosts[commId]) ? communityPosts[commId] : [];
+            var cleanPosts = [];
+            for (var j = 0; j < posts.length; j++) {
+                if (postHasXSSAttempt(posts[j])) {
+                    changedCommunity = true;
+                } else {
+                    cleanPosts.push(posts[j]);
+                }
+            }
+            communityPosts[commId] = cleanPosts;
+        }
+    }
+
+    if (changedFeed && typeof saveFeedPosts === 'function') saveFeedPosts();
+    if (changedCommunity && typeof saveCommunityPosts === 'function') saveCommunityPosts();
+}
+
+function showSecurityBanScreen() {
+    if (!document.body) return;
+
+    var banData = getSecurityBanData() || {};
+    document.body.innerHTML =
+        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f2f5;font-family:Tahoma,Arial,sans-serif;padding:20px;">' +
+            '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:22px;text-align:center;">' +
+                '<div style="font-size:42px;margin-bottom:10px;">🚫</div>' +
+                '<h1 style="font-size:20px;color:#b00020;margin:0 0 10px;">Akun Diblokir</h1>' +
+                '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(SECURITY_BAN_MESSAGE) + '</p>' +
+                '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+function enforceSecurityBan() {
+    if (!isSecurityBanned()) return false;
+    showSecurityBanScreen();
+    return true;
+}
+
+function triggerSecurityBan(reason) {
+    resetComposerInputs();
+    purgeXSSAttemptsFromStorage();
+    setSecurityBan(reason);
+    alert(SECURITY_BAN_MESSAGE);
+    showSecurityBanScreen();
+}
+
+function rejectXSSPayload(source) {
+    purgeXSSAttemptsFromStorage();
+    console.warn('[Security] Payload XSS ditolak dari ' + (source || 'unknown'));
+    if (typeof showToast === 'function') {
+        showToast('🚫 Payload XSS ditolak dan dihapus.');
+    }
 }
 
 // ===== STORAGE HELPERS =====
@@ -253,6 +435,7 @@ let allHashtags = new Set();
 // Auto-connect interval
 let autoConnectInterval = null;
 
+purgeXSSAttemptsFromStorage();
 feedPosts = normalizeFeedPosts(feedPosts);
 communityPosts = normalizeCommunityPosts(communityPosts);
 migrateDefaultUserIdentity();
@@ -260,6 +443,8 @@ rebuildHashtags();
 
 // ===== INISIALISASI =====
 document.addEventListener('DOMContentLoaded', function() {
+    if (enforceSecurityBan()) return;
+
     // Set active state on topbar for home tab
     var homeNavLink = document.getElementById('nav-home');
     if (homeNavLink) homeNavLink.classList.add('active-nav');
@@ -379,6 +564,7 @@ function switchToTab(tabName) {
 // ===== POST DATA HELPERS =====
 function normalizePost(raw, scope, communityId) {
     if (!raw || (!raw.content && !raw.photo && !raw.media)) return null;
+    if (postHasXSSAttempt(raw)) return null;
     
     var createdAt = parseInt(raw.createdAt, 10);
     if (!createdAt || isNaN(createdAt)) createdAt = Date.now();
@@ -398,8 +584,16 @@ function normalizePost(raw, scope, communityId) {
         mediaType: raw.mediaType || null,
         originPeerId: raw.originPeerId || raw.fromPeerId || null,
         scope: scope || raw.scope || 'feed',
-        comments: Array.isArray(raw.comments) ? raw.comments : []
+        comments: []
     };
+
+    if (Array.isArray(raw.comments)) {
+        for (var c = 0; c < raw.comments.length; c++) {
+            if (!commentHasXSSAttempt(raw.comments[c])) {
+                post.comments.push(raw.comments[c]);
+            }
+        }
+    }
     
     if (communityId !== undefined && communityId !== null) {
         post.communityId = parseInt(communityId, 10);
@@ -463,6 +657,11 @@ function saveFeedPosts() {
 }
 
 function upsertFeedPost(post, shouldRender) {
+    if (postHasXSSAttempt(post)) {
+        rejectXSSPayload('feed-post');
+        return false;
+    }
+
     post = normalizePost(post, 'feed');
     if (!post) return false;
     
@@ -488,6 +687,11 @@ function upsertFeedPost(post, shouldRender) {
 }
 
 function upsertCommunityPost(commId, post, shouldRender) {
+    if (postHasXSSAttempt(post)) {
+        rejectXSSPayload('community-post');
+        return false;
+    }
+
     post = normalizePost(post, 'community', commId);
     if (!post) return false;
     
@@ -569,6 +773,10 @@ function mergeCommentsIntoPost(localPost, incomingComments) {
     for (var i = 0; i < incomingComments.length; i++) {
         var ic = incomingComments[i];
         if (!ic || !ic.id) continue;
+        if (commentHasXSSAttempt(ic)) {
+            rejectXSSPayload('comment-sync');
+            continue;
+        }
         var found = false;
         for (var j = 0; j < localPost.comments.length; j++) {
             if (localPost.comments[j].id === ic.id) { found = true; break; }
@@ -1147,6 +1355,11 @@ function handlePeerData(data, remotePeerId) {
 function applyIncomingComment(data, remotePeerId) {
     if (!data || !data.postId || !data.comment) return false;
     var comment = data.comment;
+    if (commentHasXSSAttempt(comment)) {
+        rejectXSSPayload('incoming-comment');
+        return false;
+    }
+
     // Cegah komentar duplikat
     if (!comment.id) return false;
 
@@ -1640,10 +1853,17 @@ function toggleComments(postId, scope, commId) {
 }
 
 function submitComment(postId, scope, commId) {
+    if (enforceSecurityBan()) return;
+
     var inputEl = document.getElementById('cmt-input-' + postId);
     var text = inputEl ? inputEl.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis komentar dulu!'); return; }
     if (text.length > 500) { showToast('❌ Komentar terlalu panjang (max 500 karakter)'); return; }
+    if (hasXSSAttempt(text)) {
+        if (inputEl) inputEl.value = '';
+        triggerSecurityBan('comment-xss-attempt');
+        return;
+    }
 
     var comment = {
         id: createLocalId('cmt'),
@@ -2183,6 +2403,8 @@ function viewCommunity(commId) {
 
 // ===== KOMUNITAS: SUBMIT POST =====
 function submitCommunityPost(commId) {
+    if (enforceSecurityBan()) return;
+
     var input = document.getElementById('communityPostInput');
     var text = input ? input.value.trim() : '';
     
@@ -2196,6 +2418,12 @@ function submitCommunityPost(commId) {
     var wordCount = countWords(text);
     if (wordCount > 1000) {
         showToast('❌ Jumlah kata terlalu banyak! Max 1000 kata. Anda menulis: ' + wordCount + ' kata');
+        return;
+    }
+
+    if (hasXSSAttempt(text)) {
+        if (input) input.value = '';
+        triggerSecurityBan('community-post-xss-attempt');
         return;
     }
     
@@ -2541,6 +2769,8 @@ function deleteCommunity(commId) {
 
 // ===== HOME: SUBMIT POST =====
 function submitPost() {
+    if (enforceSecurityBan()) return;
+
     var input = document.getElementById('postInput');
     var text = input ? input.value.trim() : '';
     
@@ -2554,6 +2784,12 @@ function submitPost() {
     var wordCount = countWords(text);
     if (wordCount > 1000) {
         showToast('❌ Jumlah kata terlalu banyak! Max 1000 kata. Anda menulis: ' + wordCount + ' kata');
+        return;
+    }
+
+    if (hasXSSAttempt(text)) {
+        if (input) input.value = '';
+        triggerSecurityBan('feed-post-xss-attempt');
         return;
     }
 
