@@ -5,8 +5,11 @@
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
 var USERNAME_MAX_LENGTH = 20;
+var LIKE_SPIKE_LIMIT = 50000000;
+var ACCOUNT_BANS_KEY = 'yaping_accountBans';
 var SECURITY_BAN_KEY = 'yaping_securityBan';
 var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
+var LIKE_SPIKE_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena post anda mendapatkan 50 juta like secara tiba-tiba.';
 var SECURITY_BAN_MONTHS = 2;
 var securityBanCountdownTimer = null;
 
@@ -170,6 +173,11 @@ function hasXSSAttempt(value) {
         compact.indexOf('data:text/html') !== -1;
 }
 
+function getSecurityBanMessage(banData) {
+    banData = banData || {};
+    return banData.reason === 'like-spike-ban' ? LIKE_SPIKE_BAN_MESSAGE : SECURITY_BAN_MESSAGE;
+}
+
 function postHasXSSAttempt(post) {
     if (!post) return false;
     if (hasXSSAttempt(post.content) || hasXSSAttempt(post.author)) return true;
@@ -197,6 +205,130 @@ function getSecurityBanExpiry(createdAt) {
     if (isNaN(base.getTime())) base = new Date();
     base.setMonth(base.getMonth() + SECURITY_BAN_MONTHS);
     return base.getTime();
+}
+
+function getAccountBans() {
+    return loadStoredJSON(ACCOUNT_BANS_KEY, {});
+}
+
+function saveAccountBans(bans) {
+    saveStoredJSON(ACCOUNT_BANS_KEY, bans || {});
+}
+
+function isAccountLocallyBanned(username) {
+    if (!username) return false;
+
+    var bans = getAccountBans();
+    var ban = bans[username];
+    if (!ban) return false;
+
+    var expiresAt = parseInt(ban.expiresAt, 10);
+    if (!expiresAt || isNaN(expiresAt) || Date.now() >= expiresAt) {
+        delete bans[username];
+        saveAccountBans(bans);
+        return false;
+    }
+
+    return true;
+}
+
+function setAccountLocalBan(username, reason) {
+    if (!username) return;
+
+    var now = Date.now();
+    var bans = getAccountBans();
+    bans[username] = {
+        reason: reason || 'like-spike-ban',
+        createdAt: now,
+        expiresAt: getSecurityBanExpiry(now),
+        durationMonths: SECURITY_BAN_MONTHS
+    };
+    saveAccountBans(bans);
+}
+
+function hasLikeSpike(post) {
+    if (!post) return false;
+    var likes = parseInt(post.likes, 10);
+    return !isNaN(likes) && likes >= LIKE_SPIKE_LIMIT;
+}
+
+function isCurrentUserPostOwner(post) {
+    if (!post) return false;
+    return post.author === currentUser ||
+        post.originPeerId === peerId ||
+        post.originPeerId === localClientId ||
+        post.originPeerId === preferredPeerId;
+}
+
+function banPostOwnerForLikeSpike(post) {
+    var author = (post && (post.author || post.fromUser)) || '@unknown';
+
+    if (isCurrentUserPostOwner(post) || author === currentUser) {
+        triggerSecurityBan('like-spike-ban');
+        return;
+    }
+
+    setAccountLocalBan(author, 'like-spike-ban');
+    if (typeof showToast === 'function') {
+        showToast('🚫 Post dihapus. Pemilik akun diban 2 bulan karena like mencurigakan.');
+    }
+}
+
+function removePostFromLocalStorageOnly(postId, scope, commId) {
+    var removed = false;
+
+    if (scope === 'community') {
+        var posts = communityPosts[commId] || [];
+        var index = findPostIndexById(posts, postId);
+        if (index !== -1) {
+            posts.splice(index, 1);
+            communityPosts[commId] = posts;
+            saveCommunityPosts();
+            removed = true;
+        }
+    } else {
+        var feedIndex = findPostIndexById(feedPosts, postId);
+        if (feedIndex !== -1) {
+            feedPosts.splice(feedIndex, 1);
+            saveFeedPosts();
+            removed = true;
+        }
+    }
+
+    if (removed) {
+        rebuildHashtags();
+        renderFeed();
+        renderMyPosts();
+        updateProfileStats();
+        renderRightSidebar();
+
+        if (scope === 'community' && currentViewedCommunity === parseInt(commId, 10)) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+        }
+    }
+
+    return removed;
+}
+
+function handleLikeSpikePost(post, scope, commId, shouldBroadcast) {
+    if (!hasLikeSpike(post)) return false;
+
+    var postId = post.id || post.postId;
+    removePostFromLocalStorageOnly(postId, scope, commId);
+
+    if (shouldBroadcast !== false && typeof broadcastPeerMessage === 'function') {
+        broadcastPeerMessage({
+            type: 'delete-post',
+            scope: scope || 'feed',
+            communityId: commId || post.communityId || null,
+            postId: postId,
+            originPeerId: post.originPeerId || post.fromPeerId || null
+        });
+    }
+
+    banPostOwnerForLikeSpike(post);
+    return true;
 }
 
 function isSecurityBanned() {
@@ -349,6 +481,42 @@ function purgeXSSAttemptsFromStorage() {
     if (changedCommunity && typeof saveCommunityPosts === 'function') saveCommunityPosts();
 }
 
+function purgeLikeSpikePostsFromStorage() {
+    var changedFeed = false;
+    if (Array.isArray(feedPosts)) {
+        var cleanFeed = [];
+        for (var i = 0; i < feedPosts.length; i++) {
+            if (hasLikeSpike(feedPosts[i])) {
+                banPostOwnerForLikeSpike(feedPosts[i]);
+                changedFeed = true;
+            } else {
+                cleanFeed.push(feedPosts[i]);
+            }
+        }
+        feedPosts = cleanFeed;
+    }
+
+    var changedCommunity = false;
+    if (communityPosts) {
+        for (var commId in communityPosts) {
+            var posts = Array.isArray(communityPosts[commId]) ? communityPosts[commId] : [];
+            var cleanPosts = [];
+            for (var j = 0; j < posts.length; j++) {
+                if (hasLikeSpike(posts[j])) {
+                    banPostOwnerForLikeSpike(posts[j]);
+                    changedCommunity = true;
+                } else {
+                    cleanPosts.push(posts[j]);
+                }
+            }
+            communityPosts[commId] = cleanPosts;
+        }
+    }
+
+    if (changedFeed && typeof saveFeedPosts === 'function') saveFeedPosts();
+    if (changedCommunity && typeof saveCommunityPosts === 'function') saveCommunityPosts();
+}
+
 function showSecurityBanScreen() {
     if (!document.body) return;
 
@@ -360,7 +528,7 @@ function showSecurityBanScreen() {
             '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:22px;text-align:center;">' +
                 '<div style="font-size:42px;margin-bottom:10px;">🚫✋</div>' +
                 '<h1 style="font-size:20px;color:#b00020;margin:0 0 10px;">Akun Diblokir</h1>' +
-                '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(SECURITY_BAN_MESSAGE) + '</p>' +
+                '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(getSecurityBanMessage(banData)) + '</p>' +
                 '<div id="security-ban-timer" style="font-size:13px;font-weight:bold;color:#b00020;margin-bottom:8px;"></div>' +
                 '<div style="font-size:12px;color:#555;margin-bottom:12px;">Ban berakhir: ' + escapeHtml(expiresDate.toLocaleString('id-ID')) + '</div>' +
                 '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '<span id="security-network-info">' + escapeHtml(getSecurityNetworkText(banData)) + '</span></div>' +
@@ -418,8 +586,8 @@ function enforceSecurityBan() {
 function triggerSecurityBan(reason) {
     resetComposerInputs();
     purgeXSSAttemptsFromStorage();
-    setSecurityBan(reason);
-    alert(SECURITY_BAN_MESSAGE);
+    var banData = setSecurityBan(reason);
+    alert(getSecurityBanMessage(banData));
     showSecurityBanScreen();
 }
 
@@ -573,6 +741,7 @@ let allHashtags = new Set();
 let autoConnectInterval = null;
 
 purgeXSSAttemptsFromStorage();
+purgeLikeSpikePostsFromStorage();
 feedPosts = normalizeFeedPosts(feedPosts);
 communityPosts = normalizeCommunityPosts(communityPosts);
 migrateDefaultUserIdentity();
@@ -705,6 +874,11 @@ function switchToTab(tabName) {
 function normalizePost(raw, scope, communityId) {
     if (!raw || (!raw.content && !raw.photo && !raw.media)) return null;
     if (postHasXSSAttempt(raw)) return null;
+    if (isAccountLocallyBanned(raw.author || raw.fromUser)) return null;
+    if (hasLikeSpike(raw)) {
+        banPostOwnerForLikeSpike(raw);
+        return null;
+    }
     
     var createdAt = parseInt(raw.createdAt, 10);
     if (!createdAt || isNaN(createdAt)) createdAt = Date.now();
@@ -801,6 +975,11 @@ function upsertFeedPost(post, shouldRender) {
         rejectXSSPayload('feed-post');
         return false;
     }
+    if (isAccountLocallyBanned(post && (post.author || post.fromUser))) return false;
+    if (hasLikeSpike(post)) {
+        handleLikeSpikePost(post, 'feed', null, true);
+        return false;
+    }
 
     post = normalizePost(post, 'feed');
     if (!post) return false;
@@ -829,6 +1008,11 @@ function upsertFeedPost(post, shouldRender) {
 function upsertCommunityPost(commId, post, shouldRender) {
     if (postHasXSSAttempt(post)) {
         rejectXSSPayload('community-post');
+        return false;
+    }
+    if (isAccountLocallyBanned(post && (post.author || post.fromUser))) return false;
+    if (hasLikeSpike(post)) {
+        handleLikeSpikePost(post, 'community', commId, true);
         return false;
     }
 
@@ -868,7 +1052,15 @@ function mergeFeedPosts(posts) {
     
     var added = 0;
     for (var i = 0; i < posts.length; i++) {
-        if (upsertFeedPost(posts[i], false)) added++;
+        var incoming = posts[i];
+        if (!incoming) continue;
+        var existingIdx = findPostIndexById(feedPosts, incoming.id);
+        if (existingIdx !== -1 && hasLikeSpike(incoming)) {
+            feedPosts[existingIdx].likes = parseInt(incoming.likes, 10);
+            handleLikeSpikePost(feedPosts[existingIdx], 'feed', null, true);
+            continue;
+        }
+        if (upsertFeedPost(incoming, false)) added++;
     }
     
     if (added > 0) {
@@ -889,7 +1081,16 @@ function mergeCommunityPosts(postsByCommunity) {
         if (!Array.isArray(list)) continue;
         
         for (var i = 0; i < list.length; i++) {
-            if (upsertCommunityPost(commId, list[i], false)) added++;
+            var incoming = list[i];
+            if (!incoming) continue;
+            if (!communityPosts[commId]) communityPosts[commId] = [];
+            var existingIdx = findPostIndexById(communityPosts[commId], incoming.id);
+            if (existingIdx !== -1 && hasLikeSpike(incoming)) {
+                communityPosts[commId][existingIdx].likes = parseInt(incoming.likes, 10);
+                handleLikeSpikePost(communityPosts[commId][existingIdx], 'community', commId, true);
+                continue;
+            }
+            if (upsertCommunityPost(commId, incoming, false)) added++;
         }
     }
     
@@ -941,6 +1142,11 @@ function mergeFeedPostsWithComments(posts) {
             // Post baru, tambahkan
             if (upsertFeedPost(incoming, false)) added++;
         } else {
+            if (hasLikeSpike(incoming)) {
+                feedPosts[existingIdx].likes = parseInt(incoming.likes, 10);
+                handleLikeSpikePost(feedPosts[existingIdx], 'feed', null, true);
+                continue;
+            }
             // Post sudah ada - merge komentarnya saja
             if (mergeCommentsIntoPost(feedPosts[existingIdx], incoming.comments)) {
                 commentsMerged = true;
@@ -972,6 +1178,11 @@ function mergeCommunityPostsWithComments(postsByCommunity) {
             if (existingIdx === -1) {
                 if (upsertCommunityPost(commId, incoming, false)) added++;
             } else {
+                if (hasLikeSpike(incoming)) {
+                    communityPosts[commId][existingIdx].likes = parseInt(incoming.likes, 10);
+                    handleLikeSpikePost(communityPosts[commId][existingIdx], 'community', commId, true);
+                    continue;
+                }
                 if (mergeCommentsIntoPost(communityPosts[commId][existingIdx], incoming.comments)) {
                     commentsMerged = true;
                 }
@@ -1483,6 +1694,8 @@ function handlePeerData(data, remotePeerId) {
         if (removeDeletedPost(data)) {
             broadcastPeerMessage(data, remotePeerId);
         }
+    } else if (data.type === 'like-post') {
+        applyIncomingLike(data, remotePeerId);
     } else if (data.type === 'new-comment') {
         // Terima komentar baru dari peer lain
         applyIncomingComment(data, remotePeerId);
@@ -1491,6 +1704,47 @@ function handlePeerData(data, remotePeerId) {
     } else if (data.type === 'peer-list') {
         mergeKnownPeerIds(data.knownPeerIds);
     }
+}
+
+function applyIncomingLike(data, remotePeerId) {
+    if (!data || !data.postId) return false;
+
+    var scope = data.scope === 'community' ? 'community' : 'feed';
+    var commId = data.communityId || data.commId || null;
+    var posts = scope === 'community' ? (communityPosts[commId] || []) : feedPosts;
+    var index = findPostIndexById(posts, data.postId);
+    if (index === -1) return false;
+
+    var post = posts[index];
+    var incomingLikes = parseInt(data.likes, 10);
+    if (!isNaN(incomingLikes) && incomingLikes >= LIKE_SPIKE_LIMIT) {
+        post.likes = incomingLikes;
+        handleLikeSpikePost(post, scope, commId, true);
+        return true;
+    }
+
+    if (!isNaN(incomingLikes) && incomingLikes >= 0) {
+        post.likes = incomingLikes;
+    }
+    if (Array.isArray(data.likedBy)) {
+        post.likedBy = data.likedBy;
+    }
+
+    if (scope === 'community') {
+        saveCommunityPosts();
+        if (currentViewedCommunity === parseInt(commId, 10)) {
+            var feedEl = document.getElementById('comm-posts-feed');
+            if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+        }
+    } else {
+        saveFeedPosts();
+        renderFeed();
+    }
+
+    renderMyPosts();
+    updateProfileStats();
+    broadcastPeerMessage(data, remotePeerId);
+    return true;
 }
 
 function applyIncomingComment(data, remotePeerId) {
@@ -2731,6 +2985,8 @@ function likeCommunityPost(commId, postId) {
         post.likes = Math.max(0, post.likes - 1);
         post.likedBy.splice(idx, 1);
     }
+
+    if (handleLikeSpikePost(post, 'community', commId, true)) return;
     
     saveCommunityPosts();
     
@@ -2739,6 +2995,15 @@ function likeCommunityPost(commId, postId) {
         var feedEl = document.getElementById('comm-posts-feed');
         if (feedEl) feedEl.innerHTML = renderCommunityPosts(commId);
     }
+
+    broadcastPeerMessage({
+        type: 'like-post',
+        scope: 'community',
+        communityId: commId,
+        postId: postId,
+        likes: post.likes,
+        likedBy: post.likedBy
+    });
 }
 
 function deleteCommunityPost(commId, postId) {
@@ -3057,6 +3322,9 @@ function likeFeedPost(postId) {
         post.likes = Math.max(0, post.likes - 1);
         post.likedBy.splice(idx, 1);
     }
+
+    if (handleLikeSpikePost(post, 'feed', null, true)) return;
+
     saveFeedPosts();
     renderFeed();
     updateProfileStats();
