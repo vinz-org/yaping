@@ -4,8 +4,11 @@
 // ============================================
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
+var USERNAME_MAX_LENGTH = 20;
 var SECURITY_BAN_KEY = 'yaping_securityBan';
-var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
+var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
+var SECURITY_BAN_MONTHS = 2;
+var securityBanCountdownTimer = null;
 
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
@@ -185,20 +188,49 @@ function commentHasXSSAttempt(comment) {
     return hasXSSAttempt(comment.content) || hasXSSAttempt(comment.author);
 }
 
-function isSecurityBanned() {
-    return localStorage.getItem(SECURITY_BAN_KEY) ? true : false;
-}
-
 function getSecurityBanData() {
     return loadStoredJSON(SECURITY_BAN_KEY, null);
 }
 
+function getSecurityBanExpiry(createdAt) {
+    var base = new Date(createdAt || Date.now());
+    if (isNaN(base.getTime())) base = new Date();
+    base.setMonth(base.getMonth() + SECURITY_BAN_MONTHS);
+    return base.getTime();
+}
+
+function isSecurityBanned() {
+    var banData = getSecurityBanData();
+    if (!banData) return false;
+
+    var createdAt = parseInt(banData.createdAt, 10);
+    if (!createdAt || isNaN(createdAt)) createdAt = Date.now();
+
+    var expiresAt = parseInt(banData.expiresAt, 10);
+    if (!expiresAt || isNaN(expiresAt)) {
+        expiresAt = getSecurityBanExpiry(createdAt);
+        banData.createdAt = createdAt;
+        banData.expiresAt = expiresAt;
+        saveStoredJSON(SECURITY_BAN_KEY, banData);
+    }
+
+    if (Date.now() >= expiresAt) {
+        localStorage.removeItem(SECURITY_BAN_KEY);
+        return false;
+    }
+
+    return true;
+}
+
 function setSecurityBan(reason) {
+    var now = Date.now();
     var banData = {
         reason: reason || 'xss-attempt',
         username: localStorage.getItem('yaping_currentUser') || '@user',
         clientId: localStorage.getItem('yaping_clientId') || 'local-browser',
-        createdAt: Date.now()
+        createdAt: now,
+        expiresAt: getSecurityBanExpiry(now),
+        durationMonths: SECURITY_BAN_MONTHS
     };
     saveStoredJSON(SECURITY_BAN_KEY, banData);
     return banData;
@@ -261,15 +293,59 @@ function showSecurityBanScreen() {
     if (!document.body) return;
 
     var banData = getSecurityBanData() || {};
+    var expiresAt = parseInt(banData.expiresAt, 10) || getSecurityBanExpiry(banData.createdAt);
+    var expiresDate = new Date(expiresAt);
     document.body.innerHTML =
         '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f2f5;font-family:Tahoma,Arial,sans-serif;padding:20px;">' +
             '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:22px;text-align:center;">' +
                 '<div style="font-size:42px;margin-bottom:10px;">🚫</div>' +
                 '<h1 style="font-size:20px;color:#b00020;margin:0 0 10px;">Akun Diblokir</h1>' +
                 '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(SECURITY_BAN_MESSAGE) + '</p>' +
+                '<div id="security-ban-timer" style="font-size:13px;font-weight:bold;color:#b00020;margin-bottom:8px;"></div>' +
+                '<div style="font-size:12px;color:#555;margin-bottom:12px;">Ban berakhir: ' + escapeHtml(expiresDate.toLocaleString('id-ID')) + '</div>' +
                 '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '</div>' +
             '</div>' +
         '</div>';
+    startSecurityBanCountdown(expiresAt);
+}
+
+function formatRemainingBanTime(ms) {
+    if (ms <= 0) return '0 menit';
+
+    var totalMinutes = Math.ceil(ms / 60000);
+    var days = Math.floor(totalMinutes / 1440);
+    var hours = Math.floor((totalMinutes % 1440) / 60);
+    var minutes = totalMinutes % 60;
+    var parts = [];
+
+    if (days > 0) parts.push(days + ' hari');
+    if (hours > 0) parts.push(hours + ' jam');
+    if (minutes > 0 || parts.length === 0) parts.push(minutes + ' menit');
+
+    return parts.join(' ');
+}
+
+function startSecurityBanCountdown(expiresAt) {
+    if (securityBanCountdownTimer) clearInterval(securityBanCountdownTimer);
+
+    function updateTimer() {
+        var timerEl = document.getElementById('security-ban-timer');
+        var remaining = expiresAt - Date.now();
+
+        if (remaining <= 0) {
+            localStorage.removeItem(SECURITY_BAN_KEY);
+            if (securityBanCountdownTimer) clearInterval(securityBanCountdownTimer);
+            location.reload();
+            return;
+        }
+
+        if (timerEl) {
+            timerEl.textContent = 'Sisa waktu ban: ' + formatRemainingBanTime(remaining);
+        }
+    }
+
+    updateTimer();
+    securityBanCountdownTimer = setInterval(updateTimer, 60000);
 }
 
 function enforceSecurityBan() {
@@ -465,6 +541,9 @@ document.addEventListener('DOMContentLoaded', function() {
     updateProfileStats();
     renderProfileAvatar();
     renderSidebarProfilePic();
+
+    var editUsernameInput = document.getElementById('edit-username');
+    if (editUsernameInput) editUsernameInput.maxLength = USERNAME_MAX_LENGTH;
 
     // Initialize Peer.js setelah UI lokal tampil, supaya feed tetap muncul walau CDN/server online lambat.
     initializePeer();
@@ -964,6 +1043,7 @@ function jsString(value) {
 
 function isOwnPost(post) {
     if (!post) return false;
+    if (currentUser && badgedUsers.has(currentUser)) return true;
     return post.author === currentUser ||
         post.originPeerId === peerId ||
         post.originPeerId === localClientId ||
@@ -2123,6 +2203,12 @@ function renderHashtagPosts(hashtag) {
         var post = posts[i].post;
         var timeAgo = formatTimeAgo(post.createdAt);
         var isLiked = post.likedBy.indexOf(currentUser) !== -1;
+        var deleteButton = '';
+        if (isOwnPost(post)) {
+            deleteButton = posts[i].type === 'community'
+                ? '<button class="post-delete-btn" onclick="deleteCommunityPost(' + posts[i].commId + ',\'' + jsString(post.id) + '\')">Hapus</button>'
+                : '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>';
+        }
         
         var mediaHTML = renderPostMedia(post);
         
@@ -2130,7 +2216,10 @@ function renderHashtagPosts(hashtag) {
             '<div class="post-card">' +
                 '<div class="post-card-header">' +
                     '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span>' +
-                    '<span class="post-timestamp">' + timeAgo + '</span>' +
+                    '<span style="display:flex;align-items:center;gap:6px;margin-left:auto;">' +
+                        '<span class="post-timestamp">' + timeAgo + '</span>' +
+                        deleteButton +
+                    '</span>' +
                 '</div>' +
                 '<div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' +
                 mediaHTML +
@@ -3081,7 +3170,7 @@ function showProfileSection(section, btn) {
     }
     if (section === 'edit') {
         // Load current values
-        var el = document.getElementById('edit-username'); if (el) el.value = currentUser;
+        var el = document.getElementById('edit-username'); if (el) { el.maxLength = USERNAME_MAX_LENGTH; el.value = currentUser; }
         el = document.getElementById('edit-fullname'); if (el) el.value = currentFullname;
         el = document.getElementById('edit-bio'); if (el) el.value = currentBio;
         
@@ -3110,6 +3199,15 @@ function saveProfile() {
     var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
     var newFullname = elName ? (elName.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
     var newBio = elBio ? elBio.value.trim() : '';
+
+    if (newUsername.length > USERNAME_MAX_LENGTH) {
+        showToast('❌ Username maksimal ' + USERNAME_MAX_LENGTH + ' karakter.');
+        if (elUser) {
+            elUser.value = newUsername.slice(0, USERNAME_MAX_LENGTH);
+            elUser.focus();
+        }
+        return;
+    }
     
     currentUser = newUsername;
     currentFullname = newFullname;
