@@ -837,6 +837,7 @@ function switchToTab(tabName) {
     for (var k = 0; k < sidebarLinks.length; k++) {
         var linkText = sidebarLinks[k].textContent.toLowerCase();
         if ((tabName === 'home' && linkText.indexOf('beranda') !== -1) ||
+            (tabName === 'search' && linkText.indexOf('search') !== -1) ||
             (tabName === 'komunitas' && linkText.indexOf('komunitas') !== -1) ||
             (tabName === 'profile' && linkText.indexOf('profil') !== -1) ||
             (tabName === 'connections' && linkText.indexOf('koneksi') !== -1) ||
@@ -854,6 +855,8 @@ function switchToTab(tabName) {
         renderMyPosts();
     } else if (tabName === 'home') {
         renderFeed();
+    } else if (tabName === 'search') {
+        renderSearchTab();
     } else if (tabName === 'hashtags') {
         renderHashtags();
     } else if (tabName === 'settings') {
@@ -2382,11 +2385,53 @@ function parsePostWithHashtags(text) {
     return formatPostContent(text);
 }
 
+function banUserByBadge(username) {
+    if (!badgedUsers.has(currentUser)) {
+        showToast('⚠️ Hanya akun resmi (ber-badge) yang bisa melakukan ban.');
+        return;
+    }
+    
+    var months = prompt('Ban ' + username + ' untuk berapa bulan? (1-12)', '3');
+    if (months === null) return;
+    
+    var n = parseInt(months);
+    if (isNaN(n) || n <= 0) {
+        showToast('❌ Durasi tidak valid.');
+        return;
+    }
+    
+    var now = Date.now();
+    var expiry = new Date(now);
+    expiry.setMonth(expiry.getMonth() + n);
+    
+    var bans = getAccountBans();
+    bans[username] = {
+        reason: 'Moderasi oleh ' + currentUser,
+        createdAt: now,
+        expiresAt: expiry.getTime(),
+        durationMonths: n
+    };
+    saveAccountBans(bans);
+    
+    broadcastPeerMessage({
+        type: 'sync-bans',
+        bans: bans
+    });
+    
+    showToast('🚫 ' + username + ' telah di-ban selama ' + n + ' bulan.');
+    closeModal();
+}
+
 function viewUserProfile(username) {
     // Jika username adalah diri sendiri, langsung ke tab profil
     if (username === currentUser) {
         switchToTab('profile');
         return;
+    }
+
+    var banButton = '';
+    if (badgedUsers.has(currentUser) && username !== currentUser) {
+        banButton = '<button class="post-delete-btn" style="background:#b00020;color:white;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:8px;" onclick="banUserByBadge(\'' + jsString(username) + '\')">🚫 Ban User</button>';
     }
 
     // Kumpulkan post milik user ini dari feed
@@ -2426,6 +2471,7 @@ function viewUserProfile(username) {
             '<div style="font-size:52px;line-height:1;">👤</div>' +
             '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '</div>' +
             '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' +
+            banButton +
         '</div>' +
         '<div style="border-top:1px solid #d8dfea;padding-top:10px;">' +
             '<div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' +
@@ -3689,11 +3735,105 @@ function addPhoto(targetInput) {
 }
 
 // ===== SEARCH =====
+function renderSearchTab() {
+    var tab = document.getElementById('search-tab');
+    if (!tab) return;
+
+    tab.innerHTML = 
+        '<div class="content-box">' +
+            '<h2 style="font-size:16px;margin-bottom:12px;color:#3b5998;">🔍 Search Yaping</h2>' +
+            '<div style="display:flex;gap:8px;margin-bottom:15px;">' +
+                '<input type="text" id="tabSearchInput" placeholder="Cari user, post, hashtag, atau komunitas..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;">' +
+                '<button class="primary-btn" onclick="doGlobalSearch()">Cari</button>' +
+            '</div>' +
+            '<div id="search-results-container"></div>' +
+        '</div>';
+    
+    var input = document.getElementById('tabSearchInput');
+    if (input) {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') doGlobalSearch();
+        });
+    }
+}
+
+function doGlobalSearch() {
+    var input = document.getElementById('tabSearchInput');
+    var query = input ? input.value.trim().toLowerCase() : '';
+    if (!query) return;
+
+    var resultsContainer = document.getElementById('search-results-container');
+    if (!resultsContainer) return;
+
+    var html = '';
+    
+    // 1. Search Users
+    var users = new Set();
+    feedPosts.forEach(p => users.add(p.author));
+    communities.forEach(c => users.add(c.owner));
+    for (var cid in communityPosts) communityPosts[cid].forEach(p => users.add(p.author));
+    
+    var matchedUsers = Array.from(users).filter(u => u.toLowerCase().includes(query));
+    if (matchedUsers.length > 0) {
+        html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">👤 Users</h3>';
+        matchedUsers.forEach(u => {
+            html += '<div class="comm-list-item" onclick="viewUserProfile(\'' + jsString(u) + '\')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;">' + getUserDisplayHTML(u) + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // 2. Search Hashtags
+    var matchedTags = Array.from(allHashtags).filter(t => t.toLowerCase().includes(query));
+    if (matchedTags.length > 0) {
+        html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;"># Hashtags</h3><div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px;">';
+        matchedTags.forEach(t => {
+            html += '<span class="hashtag-link" onclick="viewHashtag(\'' + jsString(t) + '\')" style="cursor:pointer;">' + escapeHtml(t) + '</span>';
+        });
+        html += '</div></div>';
+    }
+
+    // 3. Search Communities
+    var matchedComms = communities.filter(c => c.name.toLowerCase().includes(query) || c.desc.toLowerCase().includes(query));
+    if (matchedComms.length > 0) {
+        html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">👥 Komunitas</h3>';
+        matchedComms.forEach(c => {
+            html += '<div class="comm-list-item" onclick="viewCommunity(' + c.id + ')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;">' +
+                '<strong>' + escapeHtml(c.category) + ' ' + escapeHtml(c.name) + '</strong><br><small>' + escapeHtml(c.desc) + '</small></div>';
+        });
+        html += '</div>';
+    }
+
+    // 4. Search Posts
+    var allPosts = feedPosts.slice();
+    for (var cid in communityPosts) allPosts = allPosts.concat(communityPosts[cid]);
+    var matchedPosts = allPosts.filter(p => p.content.toLowerCase().includes(query)).sort((a,b) => b.createdAt - a.createdAt);
+    
+    if (matchedPosts.length > 0) {
+        html += '<div><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">📝 Postingan</h3>';
+        matchedPosts.slice(0, 10).forEach(p => {
+            html += '<div style="padding:10px;border-bottom:1px solid #f5f5f5;">' +
+                '<div style="font-size:11px;color:#777;">' + escapeHtml(p.author) + ' · ' + formatTimeAgo(p.createdAt) + '</div>' +
+                '<div style="font-size:12px;margin-top:4px;">' + escapeHtml(p.content.substring(0, 100)) + (p.content.length > 100 ? '...' : '') + '</div></div>';
+        });
+        html += '</div>';
+    }
+
+    if (!html) html = '<div style="text-align:center;color:#999;padding:20px;">Tidak ada hasil ditemukan.</div>';
+    resultsContainer.innerHTML = html;
+}
+
 function doSearch() {
     var input = document.getElementById('searchInput');
     var query = input ? input.value.trim() : '';
     if (query) {
-        showToast('🔍 Mencari: "' + query + '"');
+        switchToTab('search');
+        setTimeout(() => {
+            var tabInput = document.getElementById('tabSearchInput');
+            if (tabInput) {
+                tabInput.value = query;
+                doGlobalSearch();
+            }
+        }, 100);
     }
 }
 
