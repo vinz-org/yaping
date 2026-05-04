@@ -5,12 +5,12 @@
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
 var USERNAME_MAX_LENGTH = 10;
-var LIKE_SPIKE_LIMIT = 50000000;
+var LIKE_SPIKE_LIMIT = 1000000000000; // 1 Triliun like
 var ACCOUNT_BANS_KEY = 'yaping_accountBans';
 var SECURITY_BAN_KEY = 'yaping_securityBan';
 var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
-var LIKE_SPIKE_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena post anda mendapatkan 50 juta like secara tiba-tiba.';
-var SECURITY_BAN_MONTHS = 2;
+var LIKE_SPIKE_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 3 bulan karena post anda mendapatkan 1 triliun like secara tiba-tiba.';
+var SECURITY_BAN_MONTHS = 3;
 var securityBanCountdownTimer = null;
 
 function escapeHtml(text) {
@@ -270,7 +270,7 @@ function banPostOwnerForLikeSpike(post) {
 
     setAccountLocalBan(author, 'like-spike-ban');
     if (typeof showToast === 'function') {
-        showToast('🚫 Post dihapus. Pemilik akun diban 2 bulan karena like mencurigakan.');
+        showToast('🚫 Post dihapus. Pemilik akun diban 3 bulan karena like mencurigakan.');
     }
 }
 
@@ -3526,6 +3526,32 @@ function saveProfile() {
     var elBio = document.getElementById('edit-bio');
     
     var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
+
+    // Cek username yang sama (selain dirinya sendiri)
+    if (newUsername !== currentUser) {
+        var allUsers = new Set();
+        // Ambil dari feed posts
+        for (var i = 0; i < feedPosts.length; i++) {
+            if (feedPosts[i].author) allUsers.add(feedPosts[i].author);
+        }
+        // Ambil dari community posts
+        for (var commId in communityPosts) {
+            var posts = communityPosts[commId];
+            for (var j = 0; j < posts.length; j++) {
+                if (posts[j].author) allUsers.add(posts[j].author);
+            }
+        }
+        // Ambil dari komunitas
+        for (var k = 0; k < communities.length; k++) {
+            if (communities[k].owner) allUsers.add(communities[k].owner);
+        }
+
+        if (allUsers.has(newUsername)) {
+            showToast('❌ mohon coba username yang lain');
+            if (elUser) elUser.focus();
+            return;
+        }
+    }
     var newFullname = elName ? (elName.value.trim() || 'Pengguna Yaping') : 'Pengguna Yaping';
     var newBio = elBio ? elBio.value.trim() : '';
 
