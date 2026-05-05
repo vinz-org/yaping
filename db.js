@@ -4,7 +4,7 @@
 // ============================================
 
 var SUPABASE_URL = 'https://klekcbbeyvxltavjyofl.supabase.co';
-var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsZWtjYmJleXZ4bHRhdmp5b2ZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4Nzg5NzUsImV4cCI6MjA4OTQ1NDk3NX0.A7OF8g2ydgEI9h7JnRUkIjCFHcVMws8J8fkVOHoFXBM';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6eGpqaWVicG5oamVpZm5ucW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNzYxMjYsImV4cCI6MjA5Mjc1MjEyNn0.Tro63bLrHih8EJ4cVBt4SDy2lhVE4P3LQ4T81TFGKRI';
 
 // ===== SUPABASE REST HELPER =====
 
