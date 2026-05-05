@@ -11,6 +11,8 @@
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <!-- Badge resmi - edit username di badge.js -->
     <script src="badge.js"></script>
+    <!-- Supabase Database Integration -->
+    <script src="db.js"></script>
 </head>
 <body>
 
@@ -256,6 +258,17 @@
                         <button class="danger-btn" onclick="resetAllData()">Reset</button>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <div class="settings-label">Database</div>
+                    <div class="settings-row">
+                        <span id="db-status-label">Status Supabase</span>
+                        <strong id="db-status-value" style="color:#27ae60;">Menghubungkan...</strong>
+                    </div>
+                    <div class="settings-row">
+                        <span>Sync manual ke database</span>
+                        <button class="primary-btn" onclick="dbPushLocalPosts().then(function(){showToast('✅ Sync selesai!')})">Sync</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -311,5 +324,6 @@
 <div id="toast" class="hidden"></div>
 
 <script src="script.js"></script>
+<script src="db-patch.js"></script>
 </body>
 </html>
