@@ -5,7 +5,7 @@
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
 var USERNAME_MAX_LENGTH = 12;
-var LIKE_SPIKE_LIMIT = 1000000000000;
+var LIKE_SPIKE_LIMIT = 25;
 var ACCOUNT_BANS_KEY = 'yaping_accountBans';
 var SECURITY_BAN_KEY = 'yaping_securityBan';
 var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
