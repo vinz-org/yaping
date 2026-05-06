@@ -44,7 +44,6 @@ async function sbInsert(table, data) {
         });
         if (!res.ok) {
             var errText = await res.text();
-            // Ignore duplicate key errors gracefully
             if (errText.includes('duplicate key') || errText.includes('23505')) return null;
             throw new Error('INSERT ' + table + ' failed: ' + res.status + ' ' + errText);
         }
@@ -105,6 +104,73 @@ async function sbDelete(table, matchKey, matchVal) {
     }
 }
 
+// ===== SERVER-SIDE BAN SYSTEM =====
+// Ban disimpan di Supabase sehingga tidak bisa dihindari dengan hapus localStorage atau VPN.
+// Table: yaping_bans { id, username, client_id, reason, created_at, expires_at, is_permanent }
+
+var _serverBanCache = null;
+var _serverBanChecked = false;
+
+async function dbCheckServerBan() {
+    // Ambil clientId dari localStorage (jika dihapus, akan dibuat baru tapi ban by username tetap berlaku)
+    var clientId = localStorage.getItem('yaping_clientId') || '';
+    var username = localStorage.getItem('yaping_currentUser') || '';
+
+    try {
+        // Cek ban berdasarkan client_id ATAU username
+        var query = '';
+        if (clientId && username) {
+            query = 'or=(client_id.eq.' + encodeURIComponent(clientId) + ',username.eq.' + encodeURIComponent(username) + ')';
+        } else if (clientId) {
+            query = 'client_id=eq.' + encodeURIComponent(clientId);
+        } else if (username) {
+            query = 'username=eq.' + encodeURIComponent(username);
+        }
+
+        if (!query) return null;
+
+        var rows = await sbGet('yaping_bans', query + '&order=created_at.desc&limit=1');
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+
+        var ban = rows[0];
+
+        // Cek apakah ban sudah expired (kecuali permanent)
+        if (!ban.is_permanent) {
+            var expiresAt = new Date(ban.expires_at).getTime();
+            if (Date.now() >= expiresAt) {
+                return null; // Ban sudah habis
+            }
+        }
+
+        return ban;
+    } catch (e) {
+        console.warn('[DB] dbCheckServerBan error:', e);
+        return null;
+    }
+}
+
+async function dbSetServerBan(username, clientId, reason, durationMonths, isPermanent) {
+    var now = new Date();
+    var expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + (durationMonths || 3));
+
+    var banData = {
+        username: username || '',
+        client_id: clientId || '',
+        reason: reason || 'violation',
+        created_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        is_permanent: isPermanent === true
+    };
+
+    try {
+        await sbInsert('yaping_bans', banData);
+        console.log('[DB] Server ban set for:', username);
+    } catch (e) {
+        console.warn('[DB] dbSetServerBan error:', e);
+    }
+}
+
 // ===== REALTIME =====
 var realtimeWs = null;
 var realtimeConnected = false;
@@ -119,7 +185,6 @@ function setupRealtime() {
             realtimeConnected = true;
             console.log('[DB] Realtime connected');
 
-            // Join broadcast channel yaping-sync
             realtimeWs.send(JSON.stringify({
                 topic: 'realtime:yaping-public',
                 event: 'phx_join',
@@ -127,12 +192,10 @@ function setupRealtime() {
                 ref: '1'
             }));
 
-            // Subscribe to feed_posts changes
             subscribeTable('feed_posts');
             subscribeTable('community_posts');
             subscribeTable('communities');
-
-            if (typeof showToast === 'function') showToast('🗄️ Database terhubung!');
+            // Tidak ada toast "database terhubung" — dihapus sesuai permintaan
         };
 
         realtimeWs.onmessage = function(ev) {
@@ -173,7 +236,6 @@ function subscribeTable(tableName) {
 function handleRealtimeMessage(msg) {
     if (!msg || !msg.event) return;
 
-    // Handle postgres_changes
     if (msg.event === 'postgres_changes' || (msg.payload && msg.payload.type)) {
         var payload = msg.payload || {};
         var record = payload.record || payload.new;
@@ -204,10 +266,8 @@ function handleRealtimeFeedPost(row) {
     var post = dbRowToPost(row);
     if (!post) return;
 
-    // Update existing or insert new
     var existingIdx = findPostIndexById(feedPosts, post.id);
     if (existingIdx !== -1) {
-        // Update likes/comments from DB
         feedPosts[existingIdx].likes = post.likes;
         feedPosts[existingIdx].likedBy = post.likedBy;
         feedPosts[existingIdx].comments = post.comments;
@@ -371,7 +431,14 @@ async function dbInit() {
     try {
         console.log('[DB] Initializing Supabase connection...');
 
-        // Fetch all data from DB and merge into localStorage-backed state
+        // Cek server ban SEBELUM melakukan apapun
+        var serverBan = await dbCheckServerBan();
+        if (serverBan) {
+            window._serverBan = serverBan;
+            showServerBanScreen(serverBan);
+            return;
+        }
+
         var [dbComms, dbFeedPosts, dbCommPosts] = await Promise.all([
             sbGet('communities', 'order=created_at.desc&limit=200'),
             sbGet('feed_posts', 'order=created_at.desc&limit=500'),
@@ -380,7 +447,6 @@ async function dbInit() {
 
         var added = 0;
 
-        // Merge communities
         if (Array.isArray(dbComms)) {
             for (var i = 0; i < dbComms.length; i++) {
                 var comm = dbRowToCommunity(dbComms[i]);
@@ -398,7 +464,6 @@ async function dbInit() {
             }
         }
 
-        // Merge feed posts
         if (Array.isArray(dbFeedPosts)) {
             var feedAdded = 0;
             for (var k = 0; k < dbFeedPosts.length; k++) {
@@ -408,7 +473,6 @@ async function dbInit() {
                     feedPosts.push(post);
                     feedAdded++;
                 } else {
-                    // Update likes/comments from DB (source of truth)
                     var idx = findPostIndexById(feedPosts, post.id);
                     feedPosts[idx].likes = post.likes;
                     feedPosts[idx].likedBy = post.likedBy;
@@ -425,7 +489,6 @@ async function dbInit() {
             }
         }
 
-        // Merge community posts
         if (Array.isArray(dbCommPosts)) {
             var commAdded = 0;
             for (var m = 0; m < dbCommPosts.length; m++) {
@@ -456,10 +519,7 @@ async function dbInit() {
         dbReady = true;
         console.log('[DB] Sync selesai!');
 
-        // Now push local-only posts to DB (posts that exist locally but not in DB)
         await dbPushLocalPosts();
-
-        // Setup realtime subscriptions
         setupRealtime();
 
     } catch (e) {
@@ -468,14 +528,62 @@ async function dbInit() {
     }
 }
 
+// ===== TAMPILKAN LAYAR BAN SERVER =====
+function showServerBanScreen(banData) {
+    if (!document.body) return;
+    banData = banData || {};
+
+    var isPermanent = banData.is_permanent === true;
+    var expiresAt = isPermanent ? null : new Date(banData.expires_at).getTime();
+    var expiresText = isPermanent
+        ? 'PERMANEN — tidak ada batas waktu'
+        : (expiresAt ? new Date(expiresAt).toLocaleString('id-ID') : '-');
+
+    document.body.innerHTML =
+        '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f2f5;font-family:Tahoma,Arial,sans-serif;padding:20px;">' +
+            '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:28px;text-align:center;">' +
+                '<div style="font-size:48px;margin-bottom:12px;">🚫</div>' +
+                '<h1 style="font-size:20px;color:#b00020;margin:0 0 12px;">Akun Diblokir</h1>' +
+                '<p style="font-size:13px;line-height:1.6;color:#333;margin:0 0 16px;background:#fff3f3;border:1px solid #ffcccc;border-radius:4px;padding:12px;">' +
+                    (isPermanent
+                        ? 'Akun kamu telah di-<strong>ban permanen</strong> dari Yaping oleh moderator resmi karena melanggar aturan platform.'
+                        : 'Akun kamu telah diblokir dari Yaping. Ban ini berlaku di semua perangkat dan tidak bisa dihindari.') +
+                '</p>' +
+                '<div style="font-size:12px;color:#555;margin-bottom:8px;background:#f5f5f5;border-radius:4px;padding:10px;">' +
+                    '<div><strong>Alasan:</strong> ' + (banData.reason || 'Pelanggaran aturan') + '</div>' +
+                    '<div style="margin-top:4px;"><strong>Status:</strong> ' + (isPermanent ? '<span style="color:#b00020;font-weight:bold;">PERMANEN</span>' : 'Sementara') + '</div>' +
+                    '<div style="margin-top:4px;"><strong>Berakhir:</strong> ' + expiresText + '</div>' +
+                '</div>' +
+                (!isPermanent && expiresAt
+                    ? '<div id="server-ban-timer" style="font-size:13px;font-weight:bold;color:#b00020;margin-bottom:12px;"></div>'
+                    : '') +
+                '<div style="font-size:11px;color:#aaa;margin-top:12px;">Ban ini dicatat di server. Menghapus data browser atau menggunakan VPN tidak akan membantu.</div>' +
+            '</div>' +
+        '</div>';
+
+    if (!isPermanent && expiresAt) {
+        (function startTimer() {
+            var el = document.getElementById('server-ban-timer');
+            function tick() {
+                var rem = expiresAt - Date.now();
+                if (rem <= 0) { location.reload(); return; }
+                var d = Math.floor(rem / 86400000);
+                var h = Math.floor((rem % 86400000) / 3600000);
+                var m = Math.floor((rem % 3600000) / 60000);
+                if (el) el.textContent = 'Sisa waktu: ' + d + ' hari ' + h + ' jam ' + m + ' menit';
+            }
+            tick();
+            setInterval(tick, 60000);
+        })();
+    }
+}
+
 async function dbPushLocalPosts() {
-    // Push feed posts that don't exist in DB yet
     for (var i = 0; i < feedPosts.length; i++) {
         var post = feedPosts[i];
         await sbUpsert('feed_posts', postToDbRow(post), 'id');
     }
 
-    // Push community posts
     for (var commId in communityPosts) {
         var posts = communityPosts[commId] || [];
         for (var j = 0; j < posts.length; j++) {
@@ -483,37 +591,31 @@ async function dbPushLocalPosts() {
         }
     }
 
-    // Push communities
     for (var k = 0; k < communities.length; k++) {
         await sbUpsert('communities', communityToDbRow(communities[k]), 'id');
     }
 }
 
 // ===== HOOKS INTO EXISTING FUNCTIONS =====
-// These wrap the existing save functions to also sync to DB.
 
 var _origSaveFeedPosts = null;
 var _origSaveCommunityPosts = null;
 var _origSaveCommunities = null;
 
 function dbInstallHooks() {
-    // Hook saveFeedPosts
     _origSaveFeedPosts = window.saveFeedPosts;
     window.saveFeedPosts = function() {
         if (_origSaveFeedPosts) _origSaveFeedPosts();
-        // Sync latest feed post to DB (async, fire and forget)
         if (dbReady && feedPosts.length > 0) {
             var latest = feedPosts[0];
             sbUpsert('feed_posts', postToDbRow(latest), 'id');
         }
     };
 
-    // Hook saveCommunityPosts
     _origSaveCommunityPosts = window.saveCommunityPosts;
     window.saveCommunityPosts = function() {
         if (_origSaveCommunityPosts) _origSaveCommunityPosts();
         if (!dbReady) return;
-        // Sync changed community posts (fire and forget)
         for (var commId in communityPosts) {
             var posts = communityPosts[commId] || [];
             if (posts.length > 0) {
@@ -522,7 +624,6 @@ function dbInstallHooks() {
         }
     };
 
-    // Hook saveCommunities
     _origSaveCommunities = window.saveCommunities;
     window.saveCommunities = function() {
         if (_origSaveCommunities) _origSaveCommunities();
@@ -533,7 +634,6 @@ function dbInstallHooks() {
     };
 }
 
-// Full sync: called after major write operations (like post, like, comment, delete)
 async function dbSyncPost(post, isDelete) {
     if (!dbReady) return;
     if (isDelete) {
@@ -562,7 +662,6 @@ async function dbSyncCommunity(comm, isDelete) {
 }
 
 // ===== AUTO-START =====
-// Called from script.js DOMContentLoaded after local init is done.
 window.dbInit = dbInit;
 window.dbSyncPost = dbSyncPost;
 window.dbSyncCommunityPost = dbSyncCommunityPost;
@@ -570,3 +669,6 @@ window.dbSyncCommunity = dbSyncCommunity;
 window.dbInstallHooks = dbInstallHooks;
 window.sbUpsert = sbUpsert;
 window.sbDelete = sbDelete;
+window.dbSetServerBan = dbSetServerBan;
+window.dbCheckServerBan = dbCheckServerBan;
+window.showServerBanScreen = showServerBanScreen;
