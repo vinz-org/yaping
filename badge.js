@@ -6,6 +6,6 @@ var YAPING_BADGE_USERS = [
     '@vinn',
     '@vin',
     '@yaping',
-    '@peer-monsj9lz-5e38p82',
+    '@peer-motz41b4-amjo9vy',
     '@peer-mop5ghaf-vknt1li'
 ];
