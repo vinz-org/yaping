@@ -4,7 +4,7 @@
 // ============================================
 
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
-var USERNAME_MAX_LENGTH = 10;
+var USERNAME_MAX_LENGTH = 12;
 var LIKE_SPIKE_LIMIT = 1000000000000;
 var ACCOUNT_BANS_KEY = 'yaping_accountBans';
 var SECURITY_BAN_KEY = 'yaping_securityBan';
