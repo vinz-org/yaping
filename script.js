@@ -419,10 +419,33 @@ function startSecurityBanCountdown(expiresAt) {
     securityBanCountdownTimer = setInterval(updateTimer, 60000);
 }
 
-function enforceSecurityBan() {
-    if (!isSecurityBanned()) return false;
-    showSecurityBanScreen();
-    return true;
+async function enforceSecurityBan() {
+    // Cek ban lokal dulu
+    if (isSecurityBanned()) {
+        showSecurityBanScreen();
+        return true;
+    }
+    
+    // Cek ban server-side (tidak bisa dihindari dengan hapus localStorage atau VPN)
+    if (typeof dbCheckServerBan === 'function') {
+        var serverBan = await dbCheckServerBan();
+        if (serverBan) {
+            console.log('[Ban] Server ban detected:', serverBan);
+            var banMsg = 'Akun anda telah di-ban dari Yaping';
+            if (!serverBan.is_permanent && serverBan.expires_at) {
+                var expiresDate = new Date(serverBan.expires_at);
+                banMsg += ' hingga ' + expiresDate.toLocaleDateString('id-ID');
+            } else if (serverBan.is_permanent) {
+                banMsg += ' secara permanen';
+            }
+            if (serverBan.reason) banMsg += ' karena: ' + serverBan.reason;
+            alert(banMsg);
+            showSecurityBanScreen();
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 function triggerSecurityBan(reason) {
@@ -555,8 +578,8 @@ migrateDefaultUserIdentity();
 rebuildHashtags();
 
 // ===== INISIALISASI =====
-document.addEventListener('DOMContentLoaded', function() {
-    if (enforceSecurityBan()) return;
+document.addEventListener('DOMContentLoaded', async function() {
+    if (await enforceSecurityBan()) return;
 
     var homeNavLink = document.getElementById('nav-home');
     if (homeNavLink) homeNavLink.classList.add('active-nav');
@@ -1403,8 +1426,8 @@ function toggleComments(postId, scope, commId) {
     else { renderFeed(); }
 }
 
-function submitComment(postId, scope, commId) {
-    if (enforceSecurityBan()) return;
+async function submitComment(postId, scope, commId) {
+    if (await enforceSecurityBan()) return;
     var inputEl = document.getElementById('cmt-input-' + postId);
     var text = inputEl ? inputEl.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis komentar dulu!'); return; }
@@ -1480,8 +1503,22 @@ function parsePostWithHashtags(text) { return formatPostContent(text); }
 
 // ===== BAN USER OLEH BADGE (SERVER-SIDE PERMANENT) =====
 function banUserByBadge(username) {
+    // Enforce badge check - hanya akun dengan badge resmi yang bisa ban
     if (!badgedUsers.has(currentUser)) {
         showToast('⚠️ Hanya akun resmi (ber-badge) yang bisa melakukan ban.');
+        console.warn('[Ban] Unauthorized ban attempt by non-badged user:', currentUser);
+        return;
+    }
+    
+    // Pastikan target user bukan diri sendiri
+    if (username === currentUser) {
+        showToast('⚠️ Kamu tidak bisa ban diri sendiri.');
+        return;
+    }
+    
+    // Jangan bisa ban user lain yang punya badge
+    if (badgedUsers.has(username)) {
+        showToast('⚠️ Tidak bisa ban user yang memiliki badge resmi.');
         return;
     }
 
@@ -1714,8 +1751,8 @@ function viewCommunity(commId) {
         '<div class="content-box"><div class="box-title">💬 Diskusi Terbaru</div><div id="comm-posts-feed">' + postsHTML + '</div></div>';
 }
 
-function submitCommunityPost(commId) {
-    if (enforceSecurityBan()) return;
+async function submitCommunityPost(commId) {
+    if (await enforceSecurityBan()) return;
     var input = document.getElementById('communityPostInput');
     var text = input ? input.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis sesuatu dulu ya!'); if (input) input.focus(); return; }
@@ -1843,8 +1880,8 @@ function deleteCommunity(commId) {
 }
 
 // ===== HOME: SUBMIT POST =====
-function submitPost() {
-    if (enforceSecurityBan()) return;
+async function submitPost() {
+    if (await enforceSecurityBan()) return;
     var input = document.getElementById('postInput');
     var text = input ? input.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis sesuatu dulu ya!'); if (input) input.focus(); return; }
@@ -2011,10 +2048,12 @@ function changeFontSize(size) { document.body.style.fontSize = size + 'px'; }
 function clearAllPosts() {
     if (!confirm('Hapus semua postingan MILIKMU? Postingan dari pengguna lain tidak akan terpengaruh.')) return;
 
-    // Hapus hanya postingan milik sendiri dari feed
+    // PENTING: Hapus HANYA postingan milik sendiri (currentUser) saja
+    // Jangan hapus postingan user lain meskipun ada badge
     var removed = 0;
     var newFeedPosts = [];
     for (var i = 0; i < feedPosts.length; i++) {
+        // Hanya hapus jika author sama dengan currentUser
         if (feedPosts[i].author === currentUser) {
             removed++;
             // Hapus dari DB juga
