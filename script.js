@@ -521,6 +521,7 @@ let postMedia = null;
 let postMediaType = null;
 let openComments = {};
 let badgedUsers = new Set();
+let following = new Set(loadStoredJSON('yaping_following', []));
 
 // ===== BADGE SYSTEM =====
 function loadBadgeList() {
@@ -595,6 +596,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     updateProfileStats();
     renderProfileAvatar();
     renderSidebarProfilePic();
+
+    // Request Notification Permission
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
 
     var editUsernameInput = document.getElementById('edit-username');
     if (editUsernameInput) editUsernameInput.maxLength = USERNAME_MAX_LENGTH;
@@ -1584,11 +1590,29 @@ function banUserByBadge(username) {
     closeModal();
 }
 
+function toggleFollow(username) {
+    if (!username || username === currentUser) return;
+    if (following.has(username)) {
+        following.delete(username);
+        showToast('🚶 Batal mengikuti ' + username);
+    } else {
+        following.add(username);
+        showToast('✅ Sekarang mengikuti ' + username);
+    }
+    saveStoredJSON('yaping_following', Array.from(following));
+    updateProfileStats();
+    viewUserProfile(username); // Refresh modal
+}
+
 function viewUserProfile(username) {
     if (username === currentUser) { switchToTab('profile'); return; }
+    
+    var isFollowing = following.has(username);
+    var followBtn = '<button class="follow-btn-big' + (isFollowing ? ' following' : '') + '" style="margin-top:8px; width:100%;" onclick="toggleFollow(\'' + jsString(username) + '\')">' + (isFollowing ? '✓ Mengikuti' : '+ Ikuti') + '</button>';
+
     var banButton = '';
     if (badgedUsers.has(currentUser) && username !== currentUser) {
-        banButton = '<button class="post-delete-btn" style="background:#b00020;color:white;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:8px;" onclick="banUserByBadge(\'' + jsString(username) + '\')">🚫 Ban User</button>';
+        banButton = '<button class="post-delete-btn" style="background:#b00020;color:white;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:8px; margin-left:4px;" onclick="banUserByBadge(\'' + jsString(username) + '\')">🚫 Ban</button>';
     }
     var userPosts = [];
     for (var i = 0; i < feedPosts.length; i++) { if (feedPosts[i].author === username) userPosts.push(feedPosts[i]); }
@@ -1610,7 +1634,8 @@ function viewUserProfile(username) {
     }
     var content = '<div style="text-align:center;padding:12px 0 16px;"><div style="font-size:52px;line-height:1;">👤</div>' +
         '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '</div>' +
-        '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' + banButton + '</div>' +
+        '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' + 
+        '<div style="display:flex; justify-content:center; align-items:center; max-width:200px; margin: 8px auto 0;">' + followBtn + banButton + '</div></div>' +
         '<div style="border-top:1px solid #d8dfea;padding-top:10px;"><div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' + postsHtml + '</div>';
     showModal('Profil ' + username, content);
 }
@@ -1968,6 +1993,16 @@ function renderMyPosts() {
 // ===== PROFILE: UPDATE STATS =====
 function updateProfileStats() {
     var el;
+    // Show/hide admin settings
+    var adminGroup = document.getElementById('admin-settings-group');
+    if (adminGroup) {
+        if (badgedUsers.has(currentUser)) adminGroup.classList.remove('hidden');
+        else adminGroup.classList.add('hidden');
+    }
+
+    // Update follow counts in UI
+    el = document.getElementById('pi-following'); if (el) el.textContent = following.size;
+
     var myPostCount = 0, likesGiven = 0;
     for (var f = 0; f < feedPosts.length; f++) {
         if (feedPosts[f].author === currentUser) myPostCount++;
@@ -2102,6 +2137,46 @@ function resetAllData() {
 function showNotifications() {
     var dropdown = document.getElementById('notif-dropdown');
     if (dropdown) dropdown.classList.toggle('hidden');
+}
+
+async function adminActionBan() {
+    if (!badgedUsers.has(currentUser)) return;
+    var input = document.getElementById('admin-ban-username');
+    var username = input ? input.value.trim() : '';
+    if (!username) { showToast('⚠️ Masukkan username!'); return; }
+    if (username === currentUser) { showToast('⚠️ Tidak bisa ban diri sendiri!'); return; }
+    if (badgedUsers.has(username)) { showToast('⚠️ Tidak bisa ban admin lain!'); return; }
+    
+    banUserByBadge(username);
+    input.value = '';
+}
+
+async function adminActionUnban() {
+    if (!badgedUsers.has(currentUser)) return;
+    var input = document.getElementById('admin-unban-username');
+    var username = input ? input.value.trim() : '';
+    if (!username) { showToast('⚠️ Masukkan username!'); return; }
+
+    if (!confirm('Unban akun ' + username + '?')) return;
+
+    // Hapus dari localStorage lokal
+    var bans = getAccountBans();
+    if (bans[username]) {
+        delete bans[username];
+        saveAccountBans(bans);
+    }
+
+    // Hapus dari Supabase
+    if (typeof sbDelete === 'function') {
+        var success = await sbDelete('yaping_bans', 'username', username);
+        if (success) {
+            showToast('✅ Akun ' + username + ' berhasil di-unban!');
+            broadcastPeerMessage({ type: 'sync-bans', bans: bans });
+        } else {
+            showToast('❌ Gagal menghapus ban di database.');
+        }
+    }
+    input.value = '';
 }
 
 function addNotification(text, type) {

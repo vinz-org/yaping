@@ -267,6 +267,22 @@ function handleRealtimeFeedPost(row) {
     if (!post) return;
 
     var existingIdx = findPostIndexById(feedPosts, post.id);
+    if (existingIdx === -1) {
+        // Notifikasi untuk postingan baru
+        if (typeof addNotification === 'function') {
+            var authorName = post.author || 'Seseorang';
+            var contentPreview = (post.content || '').substring(0, 30);
+            addNotification(authorName + ' memposting: ' + contentPreview + '...', 'post');
+            
+            // Opsional: Browser Notification
+            if (Notification.permission === 'granted') {
+                new Notification('Yaping: Postingan Baru', {
+                    body: authorName + ': ' + contentPreview + '...',
+                    icon: 'favicon.ico'
+                });
+            }
+        }
+    }
     if (existingIdx !== -1) {
         feedPosts[existingIdx].likes = post.likes;
         feedPosts[existingIdx].likedBy = post.likedBy;

@@ -162,6 +162,7 @@
                     <div class="info-item"><strong>Total Post:</strong> <span id="pi-posts">0</span></div>
                     <div class="info-item"><strong>Like Diberikan:</strong> <span id="pi-likes">0</span></div>
                     <div class="info-item"><strong>Komunitas:</strong> <span id="pi-comms">3</span></div>
+                    <div class="info-item"><strong>Mengikuti:</strong> <span id="pi-following">0</span></div>
                 </div>
             </div>
 
@@ -274,6 +275,25 @@
                     <div class="settings-row">
                         <span>Sync manual ke database</span>
                         <button class="primary-btn" onclick="dbPushLocalPosts().then(function(){showToast('✅ Sync selesai!')})">Sync</button>
+                    </div>
+                </div>
+
+                <!-- ADMIN ONLY SETTINGS -->
+                <div id="admin-settings-group" class="settings-group hidden">
+                    <div class="settings-label" style="background: #b00020; color: white;">🛡️ Badge Only (Admin)</div>
+                    <div class="settings-row">
+                        <span>Ban User by Username</span>
+                        <div style="display:flex; gap:4px;">
+                            <input type="text" id="admin-ban-username" placeholder="@username" style="width:100px; padding:2px 5px; font-size:11px;">
+                            <button class="danger-btn" style="padding:2px 8px; font-size:11px;" onclick="adminActionBan()">Ban</button>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span>Unban User Account</span>
+                        <div style="display:flex; gap:4px;">
+                            <input type="text" id="admin-unban-username" placeholder="@username" style="width:100px; padding:2px 5px; font-size:11px;">
+                            <button class="primary-btn" style="padding:2px 8px; font-size:11px;" onclick="adminActionUnban()">Unban</button>
+                        </div>
                     </div>
                 </div>
             </div>
