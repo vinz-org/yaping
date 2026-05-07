@@ -5,6 +5,8 @@
 var YAPING_BADGE_USERS = [
     '@vinn',
     '@hexaa',
+    '@bit',
+    '@anotheroom',
     '@yaping',
     '@peer-motz41b4-amjo9vy',
     '@peer-mop5ghaf-vknt1li'
