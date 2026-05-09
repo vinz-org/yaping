@@ -34,7 +34,6 @@
             <a href="#" onclick="switchToTab('updates'); return false;" id="nav-updates">📰 Updates</a>
             <a href="#" onclick="switchToTab('profile'); return false;" id="nav-profile">Profil</a>
             <a href="#" onclick="showNotifications()" id="nav-notif">🔔 <span id="notif-badge" class="hidden">0</span></a>
-            <a href="#" onclick="logout()" id="nav-logout" style="color: #b00020;">Logout</a>
         </div>
     </div>
 </div>
@@ -271,6 +270,13 @@
                     <div class="settings-row">
                         <span>Reset semua data</span>
                         <button class="danger-btn" onclick="resetAllData()">Reset</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Akun</div>
+                    <div class="settings-row">
+                        <span>Keluar dari akun</span>
+                        <button class="danger-btn" onclick="logout()">Logout</button>
                     </div>
                 </div>
                 <div class="settings-group">

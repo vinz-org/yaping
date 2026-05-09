@@ -654,6 +654,7 @@ function switchToTab(tabName) {
     else if (tabName === 'home') renderFeed();
     else if (tabName === 'search') renderSearchTab();
     else if (tabName === 'hashtags') renderHashtags();
+    else if (tabName === 'updates') renderUpdates();
 
     var notifDropdown = document.getElementById('notif-dropdown');
     if (notifDropdown) notifDropdown.classList.add('hidden');
@@ -2277,6 +2278,71 @@ function doSearch() {
             if (tabInput) { tabInput.value = query; doGlobalSearch(); }
         }, 100);
     }
+}
+
+// ===== UPDATES FUNCTIONS =====
+function renderUpdates() {
+    var feed = document.getElementById('updates-feed');
+    if (!feed) return;
+    
+    var allPosts = feedPosts.slice();
+    for (var cid in communityPosts) {
+        allPosts = allPosts.concat(communityPosts[cid]);
+    }
+    
+    // Filter by type based on current filter
+    var filtered = allPosts.filter(function(post) {
+        if (currentUpdatesFilter === 'all') return true;
+        if (currentUpdatesFilter === 'post') return post.content && post.content.length > 0;
+        if (currentUpdatesFilter === 'like') return post.likes > 0;
+        if (currentUpdatesFilter === 'comment') return post.comments && post.comments.length > 0;
+        if (currentUpdatesFilter === 'edit') return post.edited;
+        return true;
+    });
+    
+    // Sort by newest first
+    filtered.sort(function(a, b) { return b.createdAt - a.createdAt; });
+    
+    if (filtered.length === 0) {
+        feed.innerHTML = '<div class="sidebar-empty">Belum ada aktivitas</div>';
+        return;
+    }
+    
+    var html = '';
+    for (var i = 0; i < filtered.length && i < 50; i++) {
+        var post = filtered[i];
+        var timeAgo = formatTimeAgo(post.createdAt);
+        var preview = escapeHtml((post.content || '').substring(0, 80));
+        if (post.content && post.content.length > 80) preview += '...';
+        
+        var icon = '📝';
+        if (currentUpdatesFilter === 'like' && post.likes > 0) icon = '👍';
+        if (currentUpdatesFilter === 'comment' && post.comments && post.comments.length > 0) icon = '💬';
+        
+        html += '<div style="padding:10px; border-bottom:1px solid #eef2f5; cursor:pointer;" onclick="switchToTab(\'home\'); renderFeed();">' +
+            '<div style="font-size:12px; color:#777; margin-bottom:4px;">' +
+            icon + ' ' + escapeHtml(post.author) + ' · ' + timeAgo + '</div>' +
+            '<div style="font-size:13px; color:#333;">' + preview + '</div>';
+        
+        if (post.likes > 0) html += '<div style="font-size:11px; color:#999; margin-top:4px;">👍 ' + post.likes + ' like</div>';
+        if (post.comments && post.comments.length > 0) html += '<div style="font-size:11px; color:#999;">💬 ' + post.comments.length + ' komentar</div>';
+        
+        html += '</div>';
+    }
+    
+    feed.innerHTML = html;
+}
+
+function filterUpdates(filterType, element) {
+    currentUpdatesFilter = filterType;
+    
+    var buttons = document.querySelectorAll('#updates-filter .filter-btn');
+    for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.remove('active');
+    }
+    if (element) element.classList.add('active');
+    
+    renderUpdates();
 }
 
 function showToast(message) {
