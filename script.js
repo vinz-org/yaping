@@ -3,6 +3,20 @@
 // Facebook 2008 Style Compatible - Anti-XSS Protected
 // ============================================
 
+// ===== GLOBAL VARIABLES =====
+var feedPosts = [];
+var communityPosts = {};
+var communities = [];
+var joinedCommunities = [];
+var allHashtags = [];
+var openComments = {};
+var currentViewedCommunity = null;
+var peerId = null;
+var localClientId = null;
+var preferredPeerId = null;
+var postMedia = null;
+var postMediaType = null;
+
 // ===== SECURITY FUNCTIONS (ANTI-XSS) =====
 var USERNAME_MAX_LENGTH = 12;
 var LIKE_SPIKE_LIMIT = 25;
@@ -2382,11 +2396,56 @@ window.escapeHtml = escapeHtml;
 window.formatPostContent = formatPostContent;
 window.renderMediaSecure = renderMediaSecure;
 
+// ===== INITIALIZATION =====
+function initializeApp() {
+    // Restore auth session
+    if (typeof initAuth === 'function') initAuth();
+    
+    // Restore data from localStorage
+    feedPosts = loadStoredJSON('yaping_feedPosts', []);
+    communityPosts = loadStoredJSON('yaping_communityPosts', {});
+    communities = loadStoredJSON('yaping_communities', []);
+    joinedCommunities = loadStoredJSON('yaping_joinedCommunities', []);
+    allHashtags = loadStoredJSON('yaping_allHashtags', []);
+    
+    // Check if user is logged in
+    if (!currentUser || !localStorage.getItem('yaping_currentUser')) {
+        // Show login page
+        switchToTab('login');
+        var topbar = document.getElementById('topbar');
+        var sidebar = document.getElementById('left-sidebar');
+        var rightSidebar = document.getElementById('right-sidebar');
+        if (topbar) topbar.style.display = 'none';
+        if (sidebar) sidebar.style.display = 'none';
+        if (rightSidebar) rightSidebar.style.display = 'none';
+    } else {
+        // User is logged in, show home
+        switchToTab('home');
+        renderFeed();
+        updateProfileStats();
+        renderRightSidebar();
+    }
+    
+    // Check for security ban
+    if (typeof enforceSecurityBan === 'function') {
+        enforceSecurityBan().then(function(isBanned) {
+            if (isBanned) {
+                var topbar = document.getElementById('topbar');
+                var mainLayout = document.getElementById('main-layout');
+                if (topbar) topbar.style.display = 'none';
+                if (mainLayout) mainLayout.style.display = 'none';
+            }
+        });
+    }
+}
+
 // ============================================
 // DB PATCH
 // ============================================
 (function() {
     window.addEventListener('load', function() {
+        // Initialize application
+        initializeApp();"
         if (typeof dbInstallHooks === 'function') dbInstallHooks();
         if (typeof dbInit === 'function') {
             dbInit().then(function() {
