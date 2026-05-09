@@ -1,14 +1,15 @@
 // ============================================
 // 🚀 YAPING SOCIAL NETWORK - script.js
 // Facebook 2008 Style Compatible - Anti-XSS Protected
+// BUG FIX: Duplikasi variabel, syntax error, login flow, tab navigation
 // ============================================
 
-// ===== GLOBAL VARIABLES =====
+// ===== GLOBAL VARIABLES (hanya deklarasi satu kali pakai var) =====
 var feedPosts = [];
 var communityPosts = {};
 var communities = [];
 var joinedCommunities = [];
-var allHashtags = [];
+var allHashtags = new Set();
 var openComments = {};
 var currentViewedCommunity = null;
 var peerId = null;
@@ -16,8 +17,37 @@ var localClientId = null;
 var preferredPeerId = null;
 var postMedia = null;
 var postMediaType = null;
+var currentUpdatesFilter = 'all';
+var emojiTargetInput = 'postInput';
+var communityBeingEdited = null;
+var badgedUsers = new Set();
+var following = new Set();
+var currentUser = '@user';
+var currentFullname = 'Pengguna Yaping';
+var currentBio = '';
+var currentUserPhoto = '';
+var peer = null;
+var connections = {};
+var pendingConnections = {};
+var activeConnections = [];
+var knownPeerIds = [];
+var peerFallbackStarted = false;
+var peerReady = false;
+var currentPeerOptions = {};
+var bootstrapPeer = null;
+var bootstrapSlotId = null;
+var bootstrapReady = false;
+var bootstrapDiscoveryStarted = false;
+var bootstrapRetryInterval = null;
+var bootstrapStatus = 'menunggu';
+var bootstrapClaimInProgress = false;
+var bootstrapRoomName = 'yaping-public-room-2026-v2';
+var bootstrapSlotCount = 12;
+var autoConnectInterval = null;
+var lastCommunityCreate = 0;
+var securityBanCountdownTimer = null;
 
-// ===== SECURITY FUNCTIONS (ANTI-XSS) =====
+// ===== SECURITY CONSTANTS =====
 var USERNAME_MAX_LENGTH = 12;
 var LIKE_SPIKE_LIMIT = 25;
 var ACCOUNT_BANS_KEY = 'yaping_accountBans';
@@ -25,8 +55,49 @@ var SECURITY_BAN_KEY = 'yaping_securityBan';
 var SECURITY_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 2 bulan karena anda mencoba XSS injection. IP address anda diblokir oleh server.';
 var LIKE_SPIKE_BAN_MESSAGE = 'Akun anda resmi di ban dari Yaping selama 3 bulan karena post anda mendapatkan 1 triliun like secara tiba-tiba.';
 var SECURITY_BAN_MONTHS = 3;
-var securityBanCountdownTimer = null;
 
+// ===== STORAGE HELPERS =====
+function loadStoredJSON(key, fallback) {
+    try {
+        var raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+        console.warn('Gagal membaca data ' + key + ', memakai default:', e);
+        return fallback;
+    }
+}
+
+function saveStoredJSON(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (e) {
+        console.warn('Gagal menyimpan data ' + key + ':', e);
+        if (typeof showToast === 'function') showToast('⚠️ Data terlalu besar atau browser menolak penyimpanan.');
+        return false;
+    }
+}
+
+function createLocalId(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+}
+
+function getOrCreateStoredValue(key, prefix) {
+    var value = localStorage.getItem(key);
+    if (!value) { value = createLocalId(prefix); localStorage.setItem(key, value); }
+    return value;
+}
+
+function makePeerUsername(id) {
+    var clean = String(id || createLocalId('peer')).toLowerCase()
+        .replace(/^yaping-/, '').replace(/^client-/, '').replace(/^peer-/, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    var parts = clean.split('-').filter(Boolean);
+    var shortName = parts.slice(0, 2).join('-') || clean.substring(0, 12) || 'local';
+    return '@peer-' + shortName;
+}
+
+// ===== SECURITY FUNCTIONS (ANTI-XSS) =====
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
     var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -395,8 +466,6 @@ function showSecurityBanScreen() {
         '</div>';
     startSecurityBanCountdown(expiresAt);
     fetchSecurityNetworkInfo();
-
-    // Simpan ban ke server (agar tidak bisa dihindari dengan hapus localStorage)
     if (typeof dbSetServerBan === 'function') {
         dbSetServerBan(
             banData.username || localStorage.getItem('yaping_currentUser') || '@user',
@@ -434,31 +503,22 @@ function startSecurityBanCountdown(expiresAt) {
 }
 
 async function enforceSecurityBan() {
-    // Cek ban lokal dulu
     if (isSecurityBanned()) {
         showSecurityBanScreen();
         return true;
     }
-    
-    // Cek ban server-side (tidak bisa dihindari dengan hapus localStorage atau VPN)
     if (typeof dbCheckServerBan === 'function') {
-        var serverBan = await dbCheckServerBan();
-        if (serverBan) {
-            console.log('[Ban] Server ban detected:', serverBan);
-            var banMsg = 'Akun anda telah di-ban dari Yaping';
-            if (!serverBan.is_permanent && serverBan.expires_at) {
-                var expiresDate = new Date(serverBan.expires_at);
-                banMsg += ' hingga ' + expiresDate.toLocaleDateString('id-ID');
-            } else if (serverBan.is_permanent) {
-                banMsg += ' secara permanen';
+        try {
+            var serverBan = await dbCheckServerBan();
+            if (serverBan) {
+                console.log('[Ban] Server ban detected:', serverBan);
+                showSecurityBanScreen();
+                return true;
             }
-            if (serverBan.reason) banMsg += ' karena: ' + serverBan.reason;
-            alert(banMsg);
-            showSecurityBanScreen();
-            return true;
+        } catch(e) {
+            console.warn('[Ban] Server ban check failed:', e);
         }
     }
-    
     return false;
 }
 
@@ -476,66 +536,40 @@ function rejectXSSPayload(source) {
     if (typeof showToast === 'function') showToast('🚫 Payload XSS ditolak dan dihapus.');
 }
 
-// ===== STORAGE HELPERS =====
-function loadStoredJSON(key, fallback) {
-    try {
-        var raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : fallback;
-    } catch (e) {
-        console.warn('Gagal membaca data ' + key + ', memakai default:', e);
-        return fallback;
-    }
+// ===== INIT STATE FROM LOCALSTORAGE =====
+function initState() {
+    localClientId = getOrCreateStoredValue('yaping_clientId', 'client');
+    preferredPeerId = localStorage.getItem('yaping_preferredPeerId') || ('yaping-' + localClientId.replace(/[^a-zA-Z0-9-]/g, ''));
+
+    var storedCurrentUser = localStorage.getItem('yaping_currentUser');
+    currentUser = (!storedCurrentUser || storedCurrentUser === '@user') ? makePeerUsername(preferredPeerId) : storedCurrentUser;
+    currentFullname = localStorage.getItem('yaping_currentFullname') || 'Pengguna Yaping';
+    currentBio = localStorage.getItem('yaping_currentBio') || '';
+    currentUserPhoto = localStorage.getItem('yaping_currentUserPhoto') || '';
+
+    following = new Set(loadStoredJSON('yaping_following', []));
+    activeConnections = loadStoredJSON('yaping_activeConnections', []);
+    knownPeerIds = loadStoredJSON('yaping_knownPeerIds', []);
+    lastCommunityCreate = parseInt(localStorage.getItem('yaping_lastCommCreate') || '0', 10);
+
+    // Load data
+    communities = loadStoredJSON('yaping_communities', [
+        { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now(), banner: '#4472CA' },
+        { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000, banner: '#70AD47' },
+        { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000, banner: '#FFC000' }
+    ]);
+    communityPosts = loadStoredJSON('yaping_communityPosts', {});
+    joinedCommunities = loadStoredJSON('yaping_joinedCommunities', [1]);
+    feedPosts = loadStoredJSON('yaping_feedPosts', []);
+
+    // Purge bad data
+    purgeXSSAttemptsFromStorage();
+    purgeLikeSpikePostsFromStorage();
+    feedPosts = normalizeFeedPosts(feedPosts);
+    communityPosts = normalizeCommunityPosts(communityPosts);
+    migrateDefaultUserIdentity();
+    rebuildHashtags();
 }
-
-function saveStoredJSON(key, value) {
-    try {
-        localStorage.setItem(key, JSON.stringify(value));
-        return true;
-    } catch (e) {
-        console.warn('Gagal menyimpan data ' + key + ':', e);
-        if (typeof showToast === 'function') showToast('⚠️ Data terlalu besar atau browser menolak penyimpanan.');
-        return false;
-    }
-}
-
-function createLocalId(prefix) {
-    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
-}
-
-function getOrCreateStoredValue(key, prefix) {
-    var value = localStorage.getItem(key);
-    if (!value) { value = createLocalId(prefix); localStorage.setItem(key, value); }
-    return value;
-}
-
-function makePeerUsername(id) {
-    var clean = String(id || createLocalId('peer')).toLowerCase()
-        .replace(/^yaping-/, '').replace(/^client-/, '').replace(/^peer-/, '')
-        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    var parts = clean.split('-').filter(Boolean);
-    var shortName = parts.slice(0, 2).join('-') || clean.substring(0, 12) || 'local';
-    return '@peer-' + shortName;
-}
-
-// ===== DATA & STATE =====
-let communities = loadStoredJSON('yaping_communities', [
-    { id: 1, name: '🎮 Gaming Indonesia', desc: 'Komunitas gamer Indonesia', category: '🎮', members: 128, owner: '@user', createdAt: Date.now(), banner: '#4472CA' },
-    { id: 2, name: '💻 Teknologi Update', desc: 'Berita tech terbaru', category: '💻', members: 256, owner: '@admin', createdAt: Date.now() - 86400000, banner: '#70AD47' },
-    { id: 3, name: '😂 Meme Lucu', desc: 'Kumpulan meme terbaik', category: '😂', members: 512, owner: '@memeLord', createdAt: Date.now() - 172800000, banner: '#FFC000' }
-]);
-
-let communityPosts = loadStoredJSON('yaping_communityPosts', {});
-let joinedCommunities = loadStoredJSON('yaping_joinedCommunities', [1]);
-let feedPosts = loadStoredJSON('yaping_feedPosts', []);
-let lastCommunityCreate = localStorage.getItem('yaping_lastCommCreate') || 0;
-let emojiTargetInput = 'postInput';
-let currentViewedCommunity = null;
-let communityBeingEdited = null;
-let postMedia = null;
-let postMediaType = null;
-let openComments = {};
-let badgedUsers = new Set();
-let following = new Set(loadStoredJSON('yaping_following', []));
 
 // ===== BADGE SYSTEM =====
 function loadBadgeList() {
@@ -547,12 +581,6 @@ function loadBadgeList() {
     }
     if (badgedUsers.size > 0) {
         console.log('[Badge] Dimuat untuk: ' + Array.from(badgedUsers).join(', '));
-        renderFeed(); renderCommunities('all');
-        if (currentViewedCommunity) {
-            var feedEl = document.getElementById('comm-posts-feed');
-            if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
-        }
-        updateProfileStats();
     }
 }
 
@@ -565,84 +593,11 @@ function getUserDisplayHTML(username) {
     return '<span class="username-with-badge">' + escapeHtml(username) + getBadgeHTML(username) + '</span>';
 }
 
-let localClientId = getOrCreateStoredValue('yaping_clientId', 'client');
-let preferredPeerId = localStorage.getItem('yaping_preferredPeerId') || ('yaping-' + localClientId.replace(/[^a-zA-Z0-9-]/g, ''));
-let storedCurrentUser = localStorage.getItem('yaping_currentUser');
-let currentUser = (!storedCurrentUser || storedCurrentUser === '@user') ? makePeerUsername(preferredPeerId) : storedCurrentUser;
-let currentFullname = localStorage.getItem('yaping_currentFullname') || 'Pengguna Yaping';
-let currentBio = localStorage.getItem('yaping_currentBio') || '';
-let currentUserPhoto = localStorage.getItem('yaping_currentUserPhoto') || '';
-
-let peer = null, peerId = null, connections = {}, pendingConnections = {};
-let activeConnections = loadStoredJSON('yaping_activeConnections', []);
-let knownPeerIds = loadStoredJSON('yaping_knownPeerIds', []);
-let peerFallbackStarted = false, peerReady = false, currentPeerOptions = {};
-let bootstrapPeer = null, bootstrapSlotId = null, bootstrapReady = false;
-let bootstrapDiscoveryStarted = false, bootstrapRetryInterval = null;
-let bootstrapStatus = 'menunggu', bootstrapClaimInProgress = false;
-let bootstrapRoomName = 'yaping-public-room-2026-v2';
-let bootstrapSlotCount = 12;
-let allHashtags = new Set();
-let autoConnectInterval = null;
-
-purgeXSSAttemptsFromStorage();
-purgeLikeSpikePostsFromStorage();
-feedPosts = normalizeFeedPosts(feedPosts);
-communityPosts = normalizeCommunityPosts(communityPosts);
-migrateDefaultUserIdentity();
-rebuildHashtags();
-
-// ===== INISIALISASI =====
-document.addEventListener('DOMContentLoaded', async function() {
-    if (await enforceSecurityBan()) return;
-
-    var homeNavLink = document.getElementById('nav-home');
-    if (homeNavLink) homeNavLink.classList.add('active-nav');
-
-    var sidebarLinks = document.querySelectorAll('#left-sidebar .sidebar-menu a');
-    for (var i = 0; i < sidebarLinks.length; i++) {
-        if (sidebarLinks[i].textContent.indexOf('Beranda') !== -1) { sidebarLinks[i].classList.add('active-sidebar'); break; }
-    }
-
-    renderCommunities('all');
-    renderFeed();
-    renderRightSidebar();
-    updateProfileStats();
-    renderProfileAvatar();
-    renderSidebarProfilePic();
-
-    // Request Notification Permission
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        Notification.requestPermission();
-    }
-
-    var editUsernameInput = document.getElementById('edit-username');
-    if (editUsernameInput) editUsernameInput.maxLength = USERNAME_MAX_LENGTH;
-
-    initializePeer();
-    loadBadgeList();
-
-    var searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') doSearch(); });
-    }
-
-    document.addEventListener('click', function(e) {
-        var picker = document.getElementById('emoji-picker');
-        if (picker && !picker.contains(e.target) && !e.target.closest('[onclick*="addEmoji"]')) picker.classList.add('hidden');
-    });
-
-    if (localStorage.getItem('yaping_darkMode') === 'true') {
-        document.body.classList.add('dark-mode');
-        var toggle = document.getElementById('dark-mode-toggle');
-        if (toggle) toggle.checked = true;
-    }
-});
-
 // ===== NAVIGASI TAB =====
 function switchToTab(tabName) {
     var tabs = document.querySelectorAll('.tab-content');
     for (var i = 0; i < tabs.length; i++) tabs[i].classList.add('hidden');
+
     var targetTab = document.getElementById(tabName + '-tab');
     if (targetTab) targetTab.classList.remove('hidden');
 
@@ -653,13 +608,13 @@ function switchToTab(tabName) {
 
     var sidebarLinks = document.querySelectorAll('#left-sidebar .sidebar-menu a');
     for (var k = 0; k < sidebarLinks.length; k++) sidebarLinks[k].classList.remove('active-sidebar');
-    for (var k = 0; k < sidebarLinks.length; k++) {
-        var linkText = sidebarLinks[k].textContent.toLowerCase();
+    for (var m = 0; m < sidebarLinks.length; m++) {
+        var linkText = sidebarLinks[m].textContent.toLowerCase();
         if ((tabName === 'home' && linkText.indexOf('beranda') !== -1) ||
             (tabName === 'komunitas' && linkText.indexOf('komunitas') !== -1) ||
             (tabName === 'profile' && linkText.indexOf('profil') !== -1) ||
             (tabName === 'settings' && linkText.indexOf('pengaturan') !== -1)) {
-            sidebarLinks[k].classList.add('active-sidebar'); break;
+            sidebarLinks[m].classList.add('active-sidebar'); break;
         }
     }
 
@@ -747,6 +702,9 @@ function normalizeCommunityPosts(postsByCommunity) {
 }
 
 function saveFeedPosts() { saveStoredJSON('yaping_feedPosts', feedPosts); }
+function saveCommunities() { saveStoredJSON('yaping_communities', communities); }
+function saveCommunityPosts() { saveStoredJSON('yaping_communityPosts', communityPosts); }
+function saveJoinedCommunities() { saveStoredJSON('yaping_joinedCommunities', joinedCommunities); }
 
 function upsertFeedPost(post, shouldRender) {
     if (postHasXSSAttempt(post)) { rejectXSSPayload('feed-post'); return false; }
@@ -1401,7 +1359,7 @@ function handleProfilePhotoUpload(event) {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { showToast('Ukuran foto terlalu besar (maksimal 5MB)'); return; }
     var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validTypes.includes(file.type)) { showToast('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP'); return; }
+    if (validTypes.indexOf(file.type) === -1) { showToast('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP'); return; }
     var reader = new FileReader();
     reader.onload = function(e) {
         var photoData = e.target.result;
@@ -1522,74 +1480,36 @@ function parseHashtags(text) {
 
 function parsePostWithHashtags(text) { return formatPostContent(text); }
 
-// ===== BAN USER OLEH BADGE (SERVER-SIDE PERMANENT) =====
+// ===== BAN USER OLEH BADGE (SERVER-SIDE) =====
 function banUserByBadge(username) {
-    // Enforce badge check - hanya akun dengan badge resmi yang bisa ban
     if (!badgedUsers.has(currentUser)) {
         showToast('⚠️ Hanya akun resmi (ber-badge) yang bisa melakukan ban.');
-        console.warn('[Ban] Unauthorized ban attempt by non-badged user:', currentUser);
         return;
     }
-    
-    // Pastikan target user bukan diri sendiri
-    if (username === currentUser) {
-        showToast('⚠️ Kamu tidak bisa ban diri sendiri.');
-        return;
-    }
-    
-    // Jangan bisa ban user lain yang punya badge
-    if (badgedUsers.has(username)) {
-        showToast('⚠️ Tidak bisa ban user yang memiliki badge resmi.');
-        return;
-    }
+    if (username === currentUser) { showToast('⚠️ Kamu tidak bisa ban diri sendiri.'); return; }
+    if (badgedUsers.has(username)) { showToast('⚠️ Tidak bisa ban user yang memiliki badge resmi.'); return; }
 
     var months = prompt('Ban ' + username + ':\n\nKetik "PERMANEN" untuk ban permanen,\natau masukkan jumlah bulan (1-12):', '3');
     if (months === null) return;
-
     var isPermanent = months.trim().toUpperCase() === 'PERMANEN';
     var duration = isPermanent ? 999 : parseInt(months);
-
-    if (!isPermanent && (isNaN(duration) || duration <= 0)) {
-        showToast('❌ Durasi tidak valid. Masukkan angka atau ketik PERMANEN.');
-        return;
-    }
+    if (!isPermanent && (isNaN(duration) || duration <= 0)) { showToast('❌ Durasi tidak valid.'); return; }
 
     var reason = prompt('Alasan ban (wajib diisi):', 'Melanggar aturan komunitas');
     if (!reason || reason.trim() === '') { showToast('❌ Alasan ban wajib diisi.'); return; }
 
-    // Ban di localStorage (untuk blok lokal segera)
     var now = Date.now();
     var expiry = new Date(now);
     if (!isPermanent) expiry.setMonth(expiry.getMonth() + duration);
-    else expiry.setFullYear(expiry.getFullYear() + 100); // 100 tahun = efektif permanen
+    else expiry.setFullYear(expiry.getFullYear() + 100);
 
     var bans = getAccountBans();
-    bans[username] = {
-        reason: reason.trim(),
-        createdAt: now,
-        expiresAt: expiry.getTime(),
-        durationMonths: isPermanent ? null : duration,
-        isPermanent: isPermanent,
-        bannedBy: currentUser
-    };
+    bans[username] = { reason: reason.trim(), createdAt: now, expiresAt: expiry.getTime(), durationMonths: isPermanent ? null : duration, isPermanent: isPermanent, bannedBy: currentUser };
     saveAccountBans(bans);
 
-    // Ban di Supabase server (tidak bisa dihindari dengan hapus localStorage atau VPN baru)
-    // Cari clientId user ini dari post mereka (jika ada)
     var targetClientId = '';
     for (var i = 0; i < feedPosts.length; i++) {
-        if (feedPosts[i].author === username && feedPosts[i].originPeerId) {
-            targetClientId = feedPosts[i].originPeerId; break;
-        }
-    }
-    if (!targetClientId) {
-        for (var commId in communityPosts) {
-            var posts = communityPosts[commId] || [];
-            for (var j = 0; j < posts.length; j++) {
-                if (posts[j].author === username && posts[j].originPeerId) { targetClientId = posts[j].originPeerId; break; }
-            }
-            if (targetClientId) break;
-        }
+        if (feedPosts[i].author === username && feedPosts[i].originPeerId) { targetClientId = feedPosts[i].originPeerId; break; }
     }
 
     if (typeof dbSetServerBan === 'function') {
@@ -1597,34 +1517,24 @@ function banUserByBadge(username) {
     }
 
     broadcastPeerMessage({ type: 'sync-bans', bans: bans });
-
-    var msg = isPermanent
-        ? '🚫 ' + username + ' telah di-ban PERMANEN oleh moderator.'
-        : '🚫 ' + username + ' telah di-ban selama ' + duration + ' bulan.';
+    var msg = isPermanent ? '🚫 ' + username + ' telah di-ban PERMANEN.' : '🚫 ' + username + ' telah di-ban selama ' + duration + ' bulan.';
     showToast(msg);
     closeModal();
 }
 
 function toggleFollow(username) {
     if (!username || username === currentUser) return;
-    if (following.has(username)) {
-        following.delete(username);
-        showToast('🚶 Batal mengikuti ' + username);
-    } else {
-        following.add(username);
-        showToast('✅ Sekarang mengikuti ' + username);
-    }
+    if (following.has(username)) { following.delete(username); showToast('🚶 Batal mengikuti ' + username); }
+    else { following.add(username); showToast('✅ Sekarang mengikuti ' + username); }
     saveStoredJSON('yaping_following', Array.from(following));
     updateProfileStats();
-    viewUserProfile(username); // Refresh modal
+    viewUserProfile(username);
 }
 
 function viewUserProfile(username) {
     if (username === currentUser) { switchToTab('profile'); return; }
-    
     var isFollowing = following.has(username);
     var followBtn = '<button class="follow-btn-big' + (isFollowing ? ' following' : '') + '" style="margin-top:8px; width:100%;" onclick="toggleFollow(\'' + jsString(username) + '\')">' + (isFollowing ? '✓ Mengikuti' : '+ Ikuti') + '</button>';
-
     var banButton = '';
     if (badgedUsers.has(currentUser) && username !== currentUser) {
         banButton = '<button class="post-delete-btn" style="background:#b00020;color:white;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:8px; margin-left:4px;" onclick="banUserByBadge(\'' + jsString(username) + '\')">🚫 Ban</button>';
@@ -1649,7 +1559,7 @@ function viewUserProfile(username) {
     }
     var content = '<div style="text-align:center;padding:12px 0 16px;"><div style="font-size:52px;line-height:1;">👤</div>' +
         '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '</div>' +
-        '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' + 
+        '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' +
         '<div style="display:flex; justify-content:center; align-items:center; max-width:200px; margin: 8px auto 0;">' + followBtn + banButton + '</div></div>' +
         '<div style="border-top:1px solid #d8dfea;padding-top:10px;"><div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' + postsHtml + '</div>';
     showModal('Profil ' + username, content);
@@ -1882,7 +1792,7 @@ function showEditCommunityModal(commId) {
     var newName = prompt('Masukkan nama komunitas baru:', comm.name);
     if (!newName || newName.trim() === '') return;
     if (newName.length > 100) { showToast('❌ Nama komunitas terlalu panjang (max 100 karakter)'); return; }
-    comm.name = newName.trim(); saveCommunities(); viewCommunity(commId); renderCommunities('all'); renderCommunities('mine');
+    comm.name = newName.trim(); saveCommunities(); viewCommunity(commId); renderCommunities('all');
     showToast('✅ Nama komunitas diperbarui!');
 }
 
@@ -1895,12 +1805,8 @@ function showEditBannerModal(commId) {
     for (var i = 0; i < colors.length; i++) { colorOptions += colors[i] + (colors[i] === comm.banner ? ' (✓)' : '') + '\n'; }
     var newBanner = prompt('Pilih warna banner komunitas:\n\n' + colorOptions + '\nMasukkan kode warna (contoh: #4472CA):', comm.banner || '#4472CA');
     if (!newBanner || newBanner.trim() === '') return;
-    if (!/^#[0-9A-F]{6}$/i.test(newBanner.trim())) {
-        var isValid = false;
-        for (var j = 0; j < colors.length; j++) { if (colors[j] === newBanner.trim()) { isValid = true; break; } }
-        if (!isValid) { showToast('❌ Format warna tidak valid. Gunakan format #RRGGBB'); return; }
-    }
-    comm.banner = newBanner.trim(); saveCommunities(); viewCommunity(commId); renderCommunities('all'); renderCommunities('mine');
+    if (!/^#[0-9A-F]{6}$/i.test(newBanner.trim())) { showToast('❌ Format warna tidak valid. Gunakan format #RRGGBB'); return; }
+    comm.banner = newBanner.trim(); saveCommunities(); viewCommunity(commId); renderCommunities('all');
     showToast('✅ Banner komunitas diperbarui!');
 }
 
@@ -1915,7 +1821,7 @@ function deleteCommunity(commId) {
     var joinIndex = joinedCommunities.indexOf(commId);
     if (joinIndex !== -1) joinedCommunities.splice(joinIndex, 1);
     saveCommunities(); saveCommunityPosts(); saveJoinedCommunities();
-    switchToTab('komunitas'); renderCommunities('all'); renderCommunities('mine'); renderRightSidebar();
+    switchToTab('komunitas'); renderCommunities('all'); renderRightSidebar();
     showToast('🗑️ Komunitas berhasil dihapus!');
 }
 
@@ -1933,7 +1839,7 @@ async function submitPost() {
     if (input) input.value = ''; postMedia = null; postMediaType = null;
     var preview = document.getElementById('post-preview-img'); if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan! 🎉');
-    logActivity('create_post', 'post', newPost.id, text.substring(0, 50));
+    if (typeof logActivity === 'function') logActivity('create_post', 'post', newPost.id, text.substring(0, 50));
     broadcastPeerMessage({ type: 'post', post: newPost });
 }
 
@@ -1943,7 +1849,7 @@ function renderFeed() {
     if (!feed) return;
     feedPosts = normalizeFeedPosts(feedPosts);
     if (feedPosts.length === 0) {
-        feed.innerHTML = '<div class="content-box"><div class="sidebar-empty">Belum ada postingan asli. Tulis post pertama kamu di atas.</div></div>';
+        feed.innerHTML = '<div class="content-box"><div class="sidebar-empty">Belum ada postingan. Tulis post pertama kamu di atas.</div></div>';
         return;
     }
     var sortedPosts = feedPosts.slice();
@@ -1955,7 +1861,7 @@ function renderFeed() {
         var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
         var isLiked = likedBy.indexOf(currentUser) !== -1;
         var editButton = isOwnPost(post) ? '<button class="post-edit-btn" onclick="showEditPostModal(\'' + jsString(post.id) + '\')" style="margin-right:4px;">Edit</button>' : '';
-        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deletePost(\'' + jsString(post.id) + '\')" >Hapus</button>' : '';
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
         var mediaHTML = renderPostMedia(post);
         html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post.author) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span></div><span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'feed', null) + '</div>';
     }
@@ -1987,6 +1893,9 @@ function deleteFeedPost(postId) {
     showToast('🗑️ Postingan dihapus.');
 }
 
+// FIX: deletePost adalah alias untuk deleteFeedPost (dipanggil dari features.js)
+function deletePost(postId) { deleteFeedPost(postId); }
+
 // ===== PROFILE: RENDER MY POSTS =====
 function renderMyPosts() {
     var feed = document.getElementById('my-posts-feed');
@@ -2001,7 +1910,7 @@ function renderMyPosts() {
         var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
         var isLiked = likedBy.indexOf(currentUser) !== -1;
         var editButton = isOwnPost(post) ? '<button class="post-edit-btn" onclick="showEditPostModal(\'' + jsString(post.id) + '\')" style="margin-right:4px;">Edit</button>' : '';
-        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deletePost(\'' + jsString(post.id) + '\')" >Hapus</button>' : '';
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
         var mediaHTML = renderPostMedia(post);
         html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header"><span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span><span style="display:flex;align-items:center;gap:6px;"><span class="post-timestamp">' + formatTimeAgo(post.createdAt) + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'my-posts\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'my-posts', null) + '</div>';
     }
@@ -2011,16 +1920,12 @@ function renderMyPosts() {
 // ===== PROFILE: UPDATE STATS =====
 function updateProfileStats() {
     var el;
-    // Show/hide admin settings
     var adminGroup = document.getElementById('admin-settings-group');
     if (adminGroup) {
         if (badgedUsers.has(currentUser)) adminGroup.classList.remove('hidden');
         else adminGroup.classList.add('hidden');
     }
-
-    // Update follow counts in UI
     el = document.getElementById('pi-following'); if (el) el.textContent = following.size;
-
     var myPostCount = 0, likesGiven = 0;
     for (var f = 0; f < feedPosts.length; f++) {
         if (feedPosts[f].author === currentUser) myPostCount++;
@@ -2059,7 +1964,7 @@ function showProfileSection(section, btn) {
         el = document.getElementById('edit-bio'); if (el) el.value = currentBio;
         var safePhoto = sanitizeMediaSrc(currentUserPhoto, 'image');
         if (safePhoto) { var preview = document.getElementById('photo-preview'); var container = document.getElementById('photo-preview-container'); if (preview && container) { preview.src = safePhoto; container.style.display = 'block'; } }
-        var sec = document.getElementById('profile-edit-section'); if (sec) sec.classList.remove('hidden');
+        var secEdit = document.getElementById('profile-edit-section'); if (secEdit) secEdit.classList.remove('hidden');
     }
 }
 
@@ -2097,47 +2002,30 @@ function toggleDarkMode() {
 
 function changeFontSize(size) { document.body.style.fontSize = size + 'px'; }
 
-// ===== SETTINGS: HAPUS POSTINGAN SENDIRI SAJA =====
 function clearAllPosts() {
-    if (!confirm('Hapus semua postingan MILIKMU? Postingan dari pengguna lain tidak akan terpengaruh.')) return;
-
-    // PENTING: Hapus HANYA postingan milik sendiri (currentUser) saja
-    // Jangan hapus postingan user lain meskipun ada badge
+    if (!confirm('Hapus semua postingan MILIKMU?')) return;
     var removed = 0;
     var newFeedPosts = [];
     for (var i = 0; i < feedPosts.length; i++) {
-        // Hanya hapus jika author sama dengan currentUser
         if (feedPosts[i].author === currentUser) {
             removed++;
-            // Hapus dari DB juga
-            if (typeof dbSyncPost === 'function' && typeof dbReady !== 'undefined' && dbReady) {
-                dbSyncPost(feedPosts[i], true);
-            }
-        } else {
-            newFeedPosts.push(feedPosts[i]);
-        }
+            if (typeof dbSyncPost === 'function' && typeof dbReady !== 'undefined' && dbReady) dbSyncPost(feedPosts[i], true);
+        } else { newFeedPosts.push(feedPosts[i]); }
     }
     feedPosts = newFeedPosts;
     saveFeedPosts();
-
-    // Hapus dari community posts juga
     for (var commId in communityPosts) {
         var posts = communityPosts[commId] || [];
         var newPosts = [];
         for (var j = 0; j < posts.length; j++) {
             if (posts[j].author === currentUser) {
                 removed++;
-                if (typeof dbSyncCommunityPost === 'function' && typeof dbReady !== 'undefined' && dbReady) {
-                    dbSyncCommunityPost(posts[j], true);
-                }
-            } else {
-                newPosts.push(posts[j]);
-            }
+                if (typeof dbSyncCommunityPost === 'function' && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunityPost(posts[j], true);
+            } else { newPosts.push(posts[j]); }
         }
         communityPosts[commId] = newPosts;
     }
     saveCommunityPosts();
-
     rebuildHashtags(); renderFeed(); renderMyPosts(); updateProfileStats(); renderRightSidebar();
     if (currentViewedCommunity) {
         var feedEl = document.getElementById('comm-posts-feed');
@@ -2147,9 +2035,7 @@ function clearAllPosts() {
 }
 
 function resetAllData() {
-    if (confirm('Reset SEMUA data? Ini akan menghapus komunitas, postingan, dan pengaturan!')) {
-        localStorage.clear(); location.reload();
-    }
+    if (confirm('Reset SEMUA data?')) { localStorage.clear(); location.reload(); }
 }
 
 function showNotifications() {
@@ -2164,9 +2050,8 @@ async function adminActionBan() {
     if (!username) { showToast('⚠️ Masukkan username!'); return; }
     if (username === currentUser) { showToast('⚠️ Tidak bisa ban diri sendiri!'); return; }
     if (badgedUsers.has(username)) { showToast('⚠️ Tidak bisa ban admin lain!'); return; }
-    
     banUserByBadge(username);
-    input.value = '';
+    if (input) input.value = '';
 }
 
 async function adminActionUnban() {
@@ -2174,27 +2059,15 @@ async function adminActionUnban() {
     var input = document.getElementById('admin-unban-username');
     var username = input ? input.value.trim() : '';
     if (!username) { showToast('⚠️ Masukkan username!'); return; }
-
     if (!confirm('Unban akun ' + username + '?')) return;
-
-    // Hapus dari localStorage lokal
     var bans = getAccountBans();
-    if (bans[username]) {
-        delete bans[username];
-        saveAccountBans(bans);
-    }
-
-    // Hapus dari Supabase
+    if (bans[username]) { delete bans[username]; saveAccountBans(bans); }
     if (typeof sbDelete === 'function') {
         var success = await sbDelete('yaping_bans', 'username', username);
-        if (success) {
-            showToast('✅ Akun ' + username + ' berhasil di-unban!');
-            broadcastPeerMessage({ type: 'sync-bans', bans: bans });
-        } else {
-            showToast('❌ Gagal menghapus ban di database.');
-        }
-    }
-    input.value = '';
+        if (success) { showToast('✅ Akun ' + username + ' berhasil di-unban!'); broadcastPeerMessage({ type: 'sync-bans', bans: bans }); }
+        else { showToast('❌ Gagal menghapus ban di database.'); }
+    } else { showToast('✅ Akun ' + username + ' berhasil di-unban (lokal)!'); }
+    if (input) input.value = '';
 }
 
 function addNotification(text, type) {
@@ -2232,8 +2105,6 @@ function insertEmoji(emoji) {
     if (picker) picker.classList.add('hidden');
 }
 
-function addPhoto(targetInput) { showToast('📷 Fitur upload foto akan segera hadir!'); }
-
 function renderSearchTab() {
     var tab = document.getElementById('search-tab');
     if (!tab) return;
@@ -2250,32 +2121,37 @@ function doGlobalSearch() {
     if (!resultsContainer) return;
     var html = '';
     var users = new Set();
-    feedPosts.forEach(p => users.add(p.author)); communities.forEach(c => users.add(c.owner));
-    for (var cid in communityPosts) communityPosts[cid].forEach(p => users.add(p.author));
-    var matchedUsers = Array.from(users).filter(u => u.toLowerCase().includes(query));
+    for (var fi = 0; fi < feedPosts.length; fi++) users.add(feedPosts[fi].author);
+    for (var ci = 0; ci < communities.length; ci++) users.add(communities[ci].owner);
+    for (var cid in communityPosts) { var cposts = communityPosts[cid]; for (var cpi = 0; cpi < cposts.length; cpi++) users.add(cposts[cpi].author); }
+    var matchedUsers = Array.from(users).filter(function(u) { return u.toLowerCase().indexOf(query) !== -1; });
     if (matchedUsers.length > 0) {
         html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">👤 Users</h3>';
-        matchedUsers.forEach(u => { html += '<div class="comm-list-item" onclick="viewUserProfile(\'' + jsString(u) + '\')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;">' + getUserDisplayHTML(u) + '</div>'; });
+        for (var ui = 0; ui < matchedUsers.length; ui++) { html += '<div class="comm-list-item" onclick="viewUserProfile(\'' + jsString(matchedUsers[ui]) + '\')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;">' + getUserDisplayHTML(matchedUsers[ui]) + '</div>'; }
         html += '</div>';
     }
-    var matchedTags = Array.from(allHashtags).filter(t => t.toLowerCase().includes(query));
+    var matchedTags = Array.from(allHashtags).filter(function(t) { return t.toLowerCase().indexOf(query) !== -1; });
     if (matchedTags.length > 0) {
         html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;"># Hashtags</h3><div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px;">';
-        matchedTags.forEach(t => { html += '<span class="hashtag-link" onclick="viewHashtag(\'' + jsString(t) + '\')" style="cursor:pointer;">' + escapeHtml(t) + '</span>'; });
+        for (var ti = 0; ti < matchedTags.length; ti++) { html += '<span class="hashtag-link" onclick="viewHashtag(\'' + jsString(matchedTags[ti]) + '\')" style="cursor:pointer;">' + escapeHtml(matchedTags[ti]) + '</span>'; }
         html += '</div></div>';
     }
-    var matchedComms = communities.filter(c => c.name.toLowerCase().includes(query) || c.desc.toLowerCase().includes(query));
+    var matchedComms = communities.filter(function(c) { return c.name.toLowerCase().indexOf(query) !== -1 || c.desc.toLowerCase().indexOf(query) !== -1; });
     if (matchedComms.length > 0) {
         html += '<div style="margin-bottom:15px;"><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">👥 Komunitas</h3>';
-        matchedComms.forEach(c => { html += '<div class="comm-list-item" onclick="viewCommunity(' + c.id + ')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;"><strong>' + escapeHtml(c.category) + ' ' + escapeHtml(c.name) + '</strong><br><small>' + escapeHtml(c.desc) + '</small></div>'; });
+        for (var ki = 0; ki < matchedComms.length; ki++) { html += '<div class="comm-list-item" onclick="viewCommunity(' + matchedComms[ki].id + ')" style="cursor:pointer;padding:8px;border-bottom:1px solid #f5f5f5;"><strong>' + escapeHtml(matchedComms[ki].category) + ' ' + escapeHtml(matchedComms[ki].name) + '</strong><br><small>' + escapeHtml(matchedComms[ki].desc) + '</small></div>'; }
         html += '</div>';
     }
     var allPosts = feedPosts.slice();
-    for (var cid in communityPosts) allPosts = allPosts.concat(communityPosts[cid]);
-    var matchedPosts = allPosts.filter(p => p.content.toLowerCase().includes(query)).sort((a,b) => b.createdAt - a.createdAt);
+    for (var acid in communityPosts) { allPosts = allPosts.concat(communityPosts[acid]); }
+    var matchedPosts = allPosts.filter(function(p) { return p.content.toLowerCase().indexOf(query) !== -1; });
+    matchedPosts.sort(function(a, b) { return b.createdAt - a.createdAt; });
     if (matchedPosts.length > 0) {
         html += '<div><h3 style="font-size:13px;border-bottom:1px solid #eee;padding-bottom:5px;">📝 Postingan</h3>';
-        matchedPosts.slice(0, 10).forEach(p => { html += '<div style="padding:10px;border-bottom:1px solid #f5f5f5;"><div style="font-size:11px;color:#777;">' + escapeHtml(p.author) + ' · ' + formatTimeAgo(p.createdAt) + '</div><div style="font-size:12px;margin-top:4px;">' + escapeHtml(p.content.substring(0, 100)) + (p.content.length > 100 ? '...' : '') + '</div></div>'; });
+        for (var pi = 0; pi < Math.min(matchedPosts.length, 10); pi++) {
+            var mp = matchedPosts[pi];
+            html += '<div style="padding:10px;border-bottom:1px solid #f5f5f5;"><div style="font-size:11px;color:#777;">' + escapeHtml(mp.author) + ' · ' + formatTimeAgo(mp.createdAt) + '</div><div style="font-size:12px;margin-top:4px;">' + escapeHtml(mp.content.substring(0, 100)) + (mp.content.length > 100 ? '...' : '') + '</div></div>';
+        }
         html += '</div>';
     }
     if (!html) html = '<div style="text-align:center;color:#999;padding:20px;">Tidak ada hasil ditemukan.</div>';
@@ -2287,7 +2163,7 @@ function doSearch() {
     var query = input ? input.value.trim() : '';
     if (query) {
         switchToTab('search');
-        setTimeout(() => {
+        setTimeout(function() {
             var tabInput = document.getElementById('tabSearchInput');
             if (tabInput) { tabInput.value = query; doGlobalSearch(); }
         }, 100);
@@ -2298,13 +2174,8 @@ function doSearch() {
 function renderUpdates() {
     var feed = document.getElementById('updates-feed');
     if (!feed) return;
-    
     var allPosts = feedPosts.slice();
-    for (var cid in communityPosts) {
-        allPosts = allPosts.concat(communityPosts[cid]);
-    }
-    
-    // Filter by type based on current filter
+    for (var cid in communityPosts) { allPosts = allPosts.concat(communityPosts[cid]); }
     var filtered = allPosts.filter(function(post) {
         if (currentUpdatesFilter === 'all') return true;
         if (currentUpdatesFilter === 'post') return post.content && post.content.length > 0;
@@ -2313,62 +2184,42 @@ function renderUpdates() {
         if (currentUpdatesFilter === 'edit') return post.edited;
         return true;
     });
-    
-    // Sort by newest first
     filtered.sort(function(a, b) { return b.createdAt - a.createdAt; });
-    
-    if (filtered.length === 0) {
-        feed.innerHTML = '<div class="sidebar-empty">Belum ada aktivitas</div>';
-        return;
-    }
-    
+    if (filtered.length === 0) { feed.innerHTML = '<div class="sidebar-empty">Belum ada aktivitas</div>'; return; }
     var html = '';
     for (var i = 0; i < filtered.length && i < 50; i++) {
         var post = filtered[i];
         var timeAgo = formatTimeAgo(post.createdAt);
         var preview = escapeHtml((post.content || '').substring(0, 80));
         if (post.content && post.content.length > 80) preview += '...';
-        
         var icon = '📝';
         if (currentUpdatesFilter === 'like' && post.likes > 0) icon = '👍';
         if (currentUpdatesFilter === 'comment' && post.comments && post.comments.length > 0) icon = '💬';
-        
         html += '<div style="padding:10px; border-bottom:1px solid #eef2f5; cursor:pointer;" onclick="switchToTab(\'home\'); renderFeed();">' +
-            '<div style="font-size:12px; color:#777; margin-bottom:4px;">' +
-            icon + ' ' + escapeHtml(post.author) + ' · ' + timeAgo + '</div>' +
+            '<div style="font-size:12px; color:#777; margin-bottom:4px;">' + icon + ' ' + escapeHtml(post.author) + ' · ' + timeAgo + '</div>' +
             '<div style="font-size:13px; color:#333;">' + preview + '</div>';
-        
         if (post.likes > 0) html += '<div style="font-size:11px; color:#999; margin-top:4px;">👍 ' + post.likes + ' like</div>';
         if (post.comments && post.comments.length > 0) html += '<div style="font-size:11px; color:#999;">💬 ' + post.comments.length + ' komentar</div>';
-        
         html += '</div>';
     }
-    
     feed.innerHTML = html;
 }
 
 function filterUpdates(filterType, element) {
     currentUpdatesFilter = filterType;
-    
     var buttons = document.querySelectorAll('#updates-filter .filter-btn');
-    for (var i = 0; i < buttons.length; i++) {
-        buttons[i].classList.remove('active');
-    }
+    for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
     if (element) element.classList.add('active');
-    
     renderUpdates();
 }
 
+// ===== UTILITY =====
 function showToast(message) {
     var toast = document.getElementById('toast');
     if (!toast) return;
     toast.textContent = message; toast.classList.remove('hidden');
     setTimeout(function() { toast.classList.add('hidden'); }, 3000);
 }
-
-function saveCommunities() { saveStoredJSON('yaping_communities', communities); }
-function saveCommunityPosts() { saveStoredJSON('yaping_communityPosts', communityPosts); }
-function saveJoinedCommunities() { saveStoredJSON('yaping_joinedCommunities', joinedCommunities); }
 
 function formatTimeAgo(timestamp) {
     var diff = Date.now() - timestamp;
@@ -2392,135 +2243,163 @@ function showModal(title, content) {
     if (overlay) overlay.classList.remove('hidden');
 }
 
+// Expose globals
 window.escapeHtml = escapeHtml;
 window.formatPostContent = formatPostContent;
 window.renderMediaSecure = renderMediaSecure;
+window.findPostIndexById = findPostIndexById;
 
-// ===== INITIALIZATION =====
-function initializeApp() {
-    // Restore auth session
-    if (typeof initAuth === 'function') initAuth();
-    
-    // Restore data from localStorage
-    feedPosts = loadStoredJSON('yaping_feedPosts', []);
-    communityPosts = loadStoredJSON('yaping_communityPosts', {});
-    communities = loadStoredJSON('yaping_communities', []);
-    joinedCommunities = loadStoredJSON('yaping_joinedCommunities', []);
-    allHashtags = loadStoredJSON('yaping_allHashtags', []);
-    
-    // Check if user is logged in
-    if (!currentUser || !localStorage.getItem('yaping_currentUser')) {
-        // Show login page
-        switchToTab('login');
+// ===== INISIALISASI UTAMA =====
+document.addEventListener('DOMContentLoaded', async function() {
+    // 1. Init state dari localStorage
+    initState();
+
+    // 2. Cek security ban
+    if (await enforceSecurityBan()) return;
+
+    // 3. Cek apakah user sudah login
+    var storedUser = localStorage.getItem('yaping_currentUser');
+    var isLoggedIn = storedUser && storedUser !== '@user' && storedUser !== '';
+
+    // Jika belum login, tampilkan halaman login
+    if (!isLoggedIn) {
+        // Sembunyikan topbar dan sidebar
         var topbar = document.getElementById('topbar');
-        var sidebar = document.getElementById('left-sidebar');
+        var leftSidebar = document.getElementById('left-sidebar');
         var rightSidebar = document.getElementById('right-sidebar');
         if (topbar) topbar.style.display = 'none';
-        if (sidebar) sidebar.style.display = 'none';
+        if (leftSidebar) leftSidebar.style.display = 'none';
         if (rightSidebar) rightSidebar.style.display = 'none';
-    } else {
-        // User is logged in, show home
-        switchToTab('home');
-        renderFeed();
-        updateProfileStats();
-        renderRightSidebar();
-    }
-    
-    // Check for security ban
-    if (typeof enforceSecurityBan === 'function') {
-        enforceSecurityBan().then(function(isBanned) {
-            if (isBanned) {
-                var topbar = document.getElementById('topbar');
-                var mainLayout = document.getElementById('main-layout');
-                if (topbar) topbar.style.display = 'none';
-                if (mainLayout) mainLayout.style.display = 'none';
-            }
-        });
-    }
-}
 
-// ============================================
-// DB PATCH
-// ============================================
-(function() {
-    window.addEventListener('load', function() {
-        // Initialize application
-        initializeApp();"
-        if (typeof dbInstallHooks === 'function') dbInstallHooks();
-        if (typeof dbInit === 'function') {
-            dbInit().then(function() {
-                var dbStatus = document.getElementById('db-status-value');
-                if (dbStatus) { dbStatus.textContent = 'Terhubung ✅'; dbStatus.style.color = '#27ae60'; }
-            }).catch(function(e) {
-                var dbStatus = document.getElementById('db-status-value');
-                if (dbStatus) { dbStatus.textContent = 'Gagal ❌'; dbStatus.style.color = '#c0392b'; }
-                console.warn('[DB] Init failed:', e);
-            });
-        }
+        // Tampilkan tab login
+        var tabs = document.querySelectorAll('.tab-content');
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.add('hidden');
+        var loginTab = document.getElementById('login-tab');
+        if (loginTab) loginTab.classList.remove('hidden');
+        return; // Jangan lanjut init
+    }
+
+    // 4. User sudah login - tampilkan UI penuh
+    var homeNavLink = document.getElementById('nav-home');
+    if (homeNavLink) homeNavLink.classList.add('active-nav');
+
+    var sidebarLinks = document.querySelectorAll('#left-sidebar .sidebar-menu a');
+    for (var j = 0; j < sidebarLinks.length; j++) {
+        if (sidebarLinks[j].textContent.indexOf('Beranda') !== -1) { sidebarLinks[j].classList.add('active-sidebar'); break; }
+    }
+
+    renderCommunities('all');
+    renderFeed();
+    renderRightSidebar();
+    updateProfileStats();
+    renderProfileAvatar();
+    renderSidebarProfilePic();
+
+    // Request Notification Permission
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
+    var editUsernameInput = document.getElementById('edit-username');
+    if (editUsernameInput) editUsernameInput.maxLength = USERNAME_MAX_LENGTH;
+
+    initializePeer();
+    loadBadgeList();
+
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') doSearch(); });
+    }
+
+    document.addEventListener('click', function(e) {
+        var picker = document.getElementById('emoji-picker');
+        if (picker && !picker.contains(e.target) && !e.target.closest('[onclick*="addEmoji"]')) picker.classList.add('hidden');
     });
 
-    var _origSubmitPost = window.submitPost;
-    window.submitPost = function() {
-        var prevLen = feedPosts.length; _origSubmitPost();
-        if (feedPosts.length > prevLen && typeof dbReady !== 'undefined' && dbReady) dbSyncPost(feedPosts[0], false);
-    };
+    if (localStorage.getItem('yaping_darkMode') === 'true') {
+        document.body.classList.add('dark-mode');
+        var toggle = document.getElementById('dark-mode-toggle');
+        if (toggle) toggle.checked = true;
+    }
 
-    var _origSubmitCommunityPost = window.submitCommunityPost;
-    window.submitCommunityPost = function(commId) {
-        var prevLen = communityPosts[commId] ? communityPosts[commId].length : 0; _origSubmitCommunityPost(commId);
-        if (communityPosts[commId] && communityPosts[commId].length > prevLen && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunityPost(communityPosts[commId][0], false);
-    };
+    // 5. Init DB
+    if (typeof dbInstallHooks === 'function') dbInstallHooks();
+    if (typeof dbInit === 'function') {
+        dbInit().then(function() {
+            var dbStatus = document.getElementById('db-status-value');
+            if (dbStatus) { dbStatus.textContent = 'Terhubung ✅'; dbStatus.style.color = '#27ae60'; }
+        }).catch(function(e) {
+            var dbStatus = document.getElementById('db-status-value');
+            if (dbStatus) { dbStatus.textContent = 'Gagal ❌'; dbStatus.style.color = '#c0392b'; }
+            console.warn('[DB] Init failed:', e);
+        });
+    }
 
-    var _origDeleteFeedPost = window.deleteFeedPost;
-    window.deleteFeedPost = function(postId) {
-        var idx = findPostIndexById(feedPosts, postId);
-        var post = idx !== -1 ? feedPosts[idx] : null;
-        _origDeleteFeedPost(postId);
-        if (post && typeof dbReady !== 'undefined' && dbReady) dbSyncPost(post, true);
-    };
+    // 6. DB patch hooks
+    (function installDbPatch() {
+        var _origSubmitPost = window.submitPost;
+        window.submitPost = function() {
+            var prevLen = feedPosts.length;
+            _origSubmitPost();
+            setTimeout(function() {
+                if (feedPosts.length > prevLen && typeof dbReady !== 'undefined' && dbReady) dbSyncPost(feedPosts[0], false);
+            }, 100);
+        };
 
-    var _origDeleteCommunityPost = window.deleteCommunityPost;
-    window.deleteCommunityPost = function(commId, postId) {
-        var posts = communityPosts[commId] || [];
-        var idx = findPostIndexById(posts, postId);
-        var post = idx !== -1 ? posts[idx] : null;
-        _origDeleteCommunityPost(commId, postId);
-        if (post && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunityPost(post, true);
-    };
+        var _origDeleteFeedPost = window.deleteFeedPost;
+        window.deleteFeedPost = function(postId) {
+            var idx = findPostIndexById(feedPosts, postId);
+            var post = idx !== -1 ? feedPosts[idx] : null;
+            _origDeleteFeedPost(postId);
+            if (post && typeof dbReady !== 'undefined' && dbReady) dbSyncPost(post, true);
+        };
 
-    var _origLikeFeedPost = window.likeFeedPost;
-    window.likeFeedPost = function(postId) {
-        _origLikeFeedPost(postId);
-        if (typeof dbReady !== 'undefined' && dbReady) { var idx = findPostIndexById(feedPosts, postId); if (idx !== -1) dbSyncPost(feedPosts[idx], false); }
-    };
+        var _origDeleteCommunityPost = window.deleteCommunityPost;
+        window.deleteCommunityPost = function(commId, postId) {
+            var posts = communityPosts[commId] || [];
+            var idx = findPostIndexById(posts, postId);
+            var post = idx !== -1 ? posts[idx] : null;
+            _origDeleteCommunityPost(commId, postId);
+            if (post && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunityPost(post, true);
+        };
 
-    var _origLikeCommunityPost = window.likeCommunityPost;
-    window.likeCommunityPost = function(commId, postId) {
-        _origLikeCommunityPost(commId, postId);
-        if (typeof dbReady !== 'undefined' && dbReady && communityPosts[commId]) { var idx = findPostIndexById(communityPosts[commId], postId); if (idx !== -1) dbSyncCommunityPost(communityPosts[commId][idx], false); }
-    };
+        var _origLikeFeedPost = window.likeFeedPost;
+        window.likeFeedPost = function(postId) {
+            _origLikeFeedPost(postId);
+            if (typeof dbReady !== 'undefined' && dbReady) { var idx = findPostIndexById(feedPosts, postId); if (idx !== -1) dbSyncPost(feedPosts[idx], false); }
+        };
 
-    var _origSubmitComment = window.submitComment;
-    window.submitComment = function(postId, scope, commId) {
-        _origSubmitComment(postId, scope, commId);
-        if (typeof dbReady === 'undefined' || !dbReady) return;
-        if (scope === 'community' && commId) { var posts = communityPosts[commId] || []; var idx = findPostIndexById(posts, postId); if (idx !== -1) dbSyncCommunityPost(posts[idx], false); }
-        else { var fidx = findPostIndexById(feedPosts, postId); if (fidx !== -1) dbSyncPost(feedPosts[fidx], false); }
-    };
+        var _origLikeCommunityPost = window.likeCommunityPost;
+        window.likeCommunityPost = function(commId, postId) {
+            _origLikeCommunityPost(commId, postId);
+            if (typeof dbReady !== 'undefined' && dbReady && communityPosts[commId]) { var idx = findPostIndexById(communityPosts[commId], postId); if (idx !== -1) dbSyncCommunityPost(communityPosts[commId][idx], false); }
+        };
 
-    var _origAddCommunity = window.addCommunity;
-    window.addCommunity = function() {
-        var prevLen = communities.length; _origAddCommunity();
-        if (communities.length > prevLen && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunity(communities[0], false);
-    };
+        var _origSubmitComment = window.submitComment;
+        window.submitComment = function(postId, scope, commId) {
+            _origSubmitComment(postId, scope, commId);
+            if (typeof dbReady === 'undefined' || !dbReady) return;
+            setTimeout(function() {
+                if (scope === 'community' && commId) { var posts = communityPosts[commId] || []; var idx = findPostIndexById(posts, postId); if (idx !== -1) dbSyncCommunityPost(posts[idx], false); }
+                else { var fidx = findPostIndexById(feedPosts, postId); if (fidx !== -1) dbSyncPost(feedPosts[fidx], false); }
+            }, 200);
+        };
 
-    var _origDeleteCommunity = window.deleteCommunity;
-    window.deleteCommunity = function(commId) {
-        var comm = null;
-        for (var i = 0; i < communities.length; i++) { if (communities[i].id === commId) { comm = communities[i]; break; } }
-        _origDeleteCommunity(commId);
-        if (comm && typeof dbReady !== 'undefined' && dbReady) { dbSyncCommunity(comm, true); sbDelete('community_posts', 'community_id', commId); }
-    };
+        var _origAddCommunity = window.addCommunity;
+        window.addCommunity = function() {
+            var prevLen = communities.length;
+            _origAddCommunity();
+            if (communities.length > prevLen && typeof dbReady !== 'undefined' && dbReady) dbSyncCommunity(communities[0], false);
+        };
 
-    console.log('[DB Patch] Hooks installed.');
-})();
+        var _origDeleteCommunity = window.deleteCommunity;
+        window.deleteCommunity = function(commId) {
+            var comm = null;
+            for (var i = 0; i < communities.length; i++) { if (communities[i].id === commId) { comm = communities[i]; break; } }
+            _origDeleteCommunity(commId);
+            if (comm && typeof dbReady !== 'undefined' && dbReady) { dbSyncCommunity(comm, true); if (typeof sbDelete === 'function') sbDelete('community_posts', 'community_id', commId); }
+        };
+
+        console.log('[DB Patch] Hooks installed.');
+    })();
+});
