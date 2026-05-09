@@ -1918,6 +1918,7 @@ async function submitPost() {
     if (input) input.value = ''; postMedia = null; postMediaType = null;
     var preview = document.getElementById('post-preview-img'); if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan! 🎉');
+    logActivity('create_post', 'post', newPost.id, text.substring(0, 50));
     broadcastPeerMessage({ type: 'post', post: newPost });
 }
 
@@ -1938,9 +1939,10 @@ function renderFeed() {
         var timeAgo = formatTimeAgo(post.createdAt);
         var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
         var isLiked = likedBy.indexOf(currentUser) !== -1;
-        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
+        var editButton = isOwnPost(post) ? '<button class="post-edit-btn" onclick="showEditPostModal(\'' + jsString(post.id) + '\')" style="margin-right:4px;">Edit</button>' : '';
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deletePost(\'' + jsString(post.id) + '\')" >Hapus</button>' : '';
         var mediaHTML = renderPostMedia(post);
-        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post.author) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span></div><span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'feed', null) + '</div>';
+        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post.author) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span></div><span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'feed', null) + '</div>';
     }
     feed.innerHTML = html;
 }
@@ -1983,9 +1985,10 @@ function renderMyPosts() {
         var post = myPosts[j];
         var likedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
         var isLiked = likedBy.indexOf(currentUser) !== -1;
-        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
+        var editButton = isOwnPost(post) ? '<button class="post-edit-btn" onclick="showEditPostModal(\'' + jsString(post.id) + '\')" style="margin-right:4px;">Edit</button>' : '';
+        var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deletePost(\'' + jsString(post.id) + '\')" >Hapus</button>' : '';
         var mediaHTML = renderPostMedia(post);
-        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header"><span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span><span style="display:flex;align-items:center;gap:6px;"><span class="post-timestamp">' + formatTimeAgo(post.createdAt) + '</span>' + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'my-posts\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'my-posts', null) + '</div>';
+        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header"><span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span><span style="display:flex;align-items:center;gap:6px;"><span class="post-timestamp">' + formatTimeAgo(post.createdAt) + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'my-posts\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'my-posts', null) + '</div>';
     }
     feed.innerHTML = html;
 }

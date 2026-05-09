@@ -13,6 +13,10 @@
     <script src="badge.js"></script>
     <!-- Supabase Database Integration -->
     <script src="db.js"></script>
+    <!-- Authentication Module -->
+    <script src="auth.js"></script>
+    <!-- Features Module -->
+    <script src="features.js"></script>
 </head>
 <body>
 
@@ -27,8 +31,10 @@
         <div id="topbar-nav">
             <a href="#" onclick="switchToTab('home'); return false;" id="nav-home">Beranda</a>
             <a href="#" onclick="switchToTab('komunitas'); return false;" id="nav-komunitas">Komunitas</a>
+            <a href="#" onclick="switchToTab('updates'); return false;" id="nav-updates">📰 Updates</a>
             <a href="#" onclick="switchToTab('profile'); return false;" id="nav-profile">Profil</a>
             <a href="#" onclick="showNotifications()" id="nav-notif">🔔 <span id="notif-badge" class="hidden">0</span></a>
+            <a href="#" onclick="logout()" id="nav-logout" style="color: #b00020;">Logout</a>
         </div>
     </div>
 </div>
@@ -55,6 +61,7 @@
             <ul class="sidebar-menu">
                 <li><a href="#" onclick="switchToTab('home'); return false;">🏠 Beranda</a></li>
                 <li><a href="#" onclick="switchToTab('komunitas'); return false;">👥 Komunitas</a></li>
+                <li><a href="#" onclick="switchToTab('updates'); return false;">📰 Updates</a></li>
                 <li><a href="#" onclick="switchToTab('profile'); return false;">👤 Profil Saya</a></li>
                 <li><a href="#" onclick="switchToTab('settings'); return false;">⚙️ Pengaturan</a></li>
             </ul>
@@ -310,6 +317,73 @@
                 <div class="box-title">🏷️ Topik Hashtag</div>
                 <div id="hashtagsList" class="hashtags-list">
                     <div class="sidebar-empty">Belum ada hashtag</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: UPDATES -->
+        <div id="updates-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">📰 Aktivitas Terbaru</div>
+                <div id="updates-filter" style="margin-bottom: 12px;">
+                    <button class="filter-btn active" onclick="filterUpdates('all', this)">Semua</button>
+                    <button class="filter-btn" onclick="filterUpdates('post', this)">Postingan</button>
+                    <button class="filter-btn" onclick="filterUpdates('like', this)">Like</button>
+                    <button class="filter-btn" onclick="filterUpdates('comment', this)">Komentar</button>
+                    <button class="filter-btn" onclick="filterUpdates('edit', this)">Edit</button>
+                </div>
+                <div id="updates-feed" style="max-height: 600px; overflow-y: auto;">
+                    <div class="sidebar-empty">Belum ada aktivitas</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: LOGIN -->
+        <div id="login-tab" class="tab-content hidden">
+            <div class="content-box" style="max-width: 400px; margin: 40px auto;">
+                <div class="box-title" style="text-align: center; font-size: 24px; margin-bottom: 20px;">Masuk ke Yaping</div>
+                <div class="form-row">
+                    <label>Email</label>
+                    <input type="email" id="login-email" placeholder="nama@email.com">
+                </div>
+                <div class="form-row">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Password">
+                </div>
+                <div class="form-actions" style="flex-direction: column; gap: 8px;">
+                    <button class="primary-btn" onclick="handleLogin()" style="width: 100%;">Masuk</button>
+                    <button class="secondary-btn" onclick="switchToTab('signup')" style="width: 100%;">Belum punya akun? Daftar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SIGNUP -->
+        <div id="signup-tab" class="tab-content hidden">
+            <div class="content-box" style="max-width: 400px; margin: 40px auto;">
+                <div class="box-title" style="text-align: center; font-size: 24px; margin-bottom: 20px;">Daftar Yaping</div>
+                <div class="form-row">
+                    <label>Email</label>
+                    <input type="email" id="signup-email" placeholder="nama@email.com">
+                </div>
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="signup-username" placeholder="@username">
+                </div>
+                <div class="form-row">
+                    <label>Nama Lengkap</label>
+                    <input type="text" id="signup-fullname" placeholder="Nama Lengkap">
+                </div>
+                <div class="form-row">
+                    <label>Password</label>
+                    <input type="password" id="signup-password" placeholder="Password (minimal 6 karakter)">
+                </div>
+                <div class="form-row">
+                    <label>Konfirmasi Password</label>
+                    <input type="password" id="signup-password-confirm" placeholder="Konfirmasi Password">
+                </div>
+                <div class="form-actions" style="flex-direction: column; gap: 8px;">
+                    <button class="primary-btn" onclick="handleSignup()" style="width: 100%;">Daftar</button>
+                    <button class="secondary-btn" onclick="switchToTab('login')" style="width: 100%;">Sudah punya akun? Masuk</button>
                 </div>
             </div>
         </div>

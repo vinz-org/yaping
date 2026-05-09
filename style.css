@@ -551,6 +551,19 @@ body {
 .comment-btn:hover { background: var(--fb-blue-lighter); }
 .share-btn:hover { background: #f0fff0; border-color: #88cc88; }
 
+.post-edit-btn {
+    padding: 3px 8px;
+    background: none;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #3b5998;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.post-edit-btn:hover { background: #e8edf5; }
+
 .post-delete-btn {
     padding: 3px 8px;
     background: none;
