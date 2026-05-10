@@ -13,77 +13,86 @@ function getAuthInputUsername(value) {
     return String(value || '').trim().toLowerCase().replace(/^@+/, '');
 }
 
+function getAuthInputEmail(value) {
+    if (typeof normalizeAuthEmail === 'function') {
+        return normalizeAuthEmail(value);
+    }
+    return String(value || '').trim().toLowerCase();
+}
+
 // ===== AUTHENTICATION HANDLERS =====
 
 async function handleLogin() {
-    var usernameInput = document.getElementById('login-username');
+    var emailInput = document.getElementById('login-email');
     var passwordInput = document.getElementById('login-password');
-    var username = getAuthInputUsername(usernameInput ? usernameInput.value : '');
+    var email = getAuthInputEmail(emailInput ? emailInput.value : '');
     var password = passwordInput ? passwordInput.value : '';
 
-    if (!username || !password) {
-        showToast('❌ Username dan password harus diisi');
+    if (!email || !password) {
+        showToast('Email dan password harus diisi');
         return;
     }
 
-    var result = await signIn(username, password);
+    var result = await signIn(email, password);
     if (result.success) {
-        showToast('✅ Login berhasil!');
+        showToast('Login berhasil!');
         setTimeout(function() {
             switchToTab('home');
             location.reload();
         }, 800);
     } else {
-        showToast('❌ ' + result.error);
+        showToast(result.error);
     }
 }
 
 async function handleSignup() {
     var usernameInput = document.getElementById('signup-username');
     var passwordInput = document.getElementById('signup-password');
+    var emailInput = document.getElementById('signup-email');
     var confirmInput = document.getElementById('signup-password-confirm');
     var username = getAuthInputUsername(usernameInput ? usernameInput.value : '');
+    var email = getAuthInputEmail(emailInput ? emailInput.value : '');
     var password = passwordInput ? passwordInput.value : '';
     var passwordConfirm = confirmInput ? confirmInput.value : '';
 
-    if (!username || !password || !passwordConfirm) {
-        showToast('❌ Semua field harus diisi');
+    if (!username || !email || !password || !passwordConfirm) {
+        showToast('Semua field harus diisi');
         return;
     }
 
     if (password !== passwordConfirm) {
-        showToast('❌ Password tidak cocok');
+        showToast('Password tidak cocok');
         return;
     }
 
     if (password.length < 6) {
-        showToast('❌ Password minimal 6 karakter');
+        showToast('Password minimal 6 karakter');
         return;
     }
 
     if (username.length < 3 || username.length > 20) {
-        showToast('❌ Username harus 3-20 karakter');
+        showToast('Username harus 3-20 karakter');
         return;
     }
 
-    var result = await signUp(username, password);
+    var result = await signUp(username, email, password);
     if (result.success) {
         if (result.needsLogin) {
-            showToast('✅ Daftar berhasil! Silakan login');
+            showToast('Daftar berhasil! Cek email jika diminta, lalu login.');
             setTimeout(function() {
                 switchToTab('login');
-                var loginUsername = document.getElementById('login-username');
-                if (loginUsername) loginUsername.value = username;
+                var loginEmail = document.getElementById('login-email');
+                if (loginEmail) loginEmail.value = email;
             }, 800);
         } else {
-            showToast('✅ Daftar berhasil! Kamu sudah masuk');
+            showToast('Daftar berhasil! Kamu sudah masuk');
             setTimeout(function() {
                 switchToTab('home');
                 location.reload();
             }, 800);
         }
     } else {
-        showToast('❌ ' + result.error);
+        showToast(result.error);
     }
 }
 
@@ -92,13 +101,13 @@ async function handleSignup() {
 function showEditPostModal(postId) {
     var post = findPostById(feedPosts, postId);
     if (!post) {
-        showToast('❌ Postingan tidak ditemukan');
+        showToast('Postingan tidak ditemukan');
         return;
     }
 
     // Check if user owns this post
     if (post.author !== getCurrentUsername()) {
-        showToast('❌ Anda hanya bisa edit postingan sendiri');
+        showToast('Anda hanya bisa edit postingan sendiri');
         return;
     }
 
@@ -122,7 +131,7 @@ async function saveEditPost(postId) {
     var newContent = document.getElementById('edit-post-content').value.trim();
 
     if (!newContent) {
-        showToast('❌ Konten tidak boleh kosong');
+        showToast('Konten tidak boleh kosong');
         return;
     }
 
@@ -142,13 +151,13 @@ async function saveEditPost(postId) {
         // Log activity
         await logActivity('edit_post', 'post', postId, 'Edited post content');
 
-        showToast('✅ Postingan berhasil diperbarui');
+        showToast('Postingan berhasil diperbarui');
         closeModal();
         renderFeed();
         renderMyPosts();
     } catch (e) {
         console.error('[Features] Edit post error:', e);
-        showToast('❌ Gagal mengupdate postingan');
+        showToast('Gagal mengupdate postingan');
     }
 }
 
@@ -157,12 +166,12 @@ function deletePost(postId) {
 
     var post = findPostById(feedPosts, postId);
     if (!post) {
-        showToast('❌ Postingan tidak ditemukan');
+        showToast('Postingan tidak ditemukan');
         return;
     }
 
     if (post.author !== getCurrentUsername()) {
-        showToast('❌ Anda hanya bisa hapus postingan sendiri');
+        showToast('Anda hanya bisa hapus postingan sendiri');
         return;
     }
 
@@ -180,12 +189,12 @@ function deletePost(postId) {
         // Log activity
         logActivity('delete_post', 'post', postId, 'Deleted post');
 
-        showToast('✅ Postingan berhasil dihapus');
+        showToast('Postingan berhasil dihapus');
         renderFeed();
         renderMyPosts();
     } catch (e) {
         console.error('[Features] Delete post error:', e);
-        showToast('❌ Gagal menghapus postingan');
+        showToast('Gagal menghapus postingan');
     }
 }
 
