@@ -38,14 +38,35 @@ function createAuthEmailRow(inputId, placeholder) {
     return row;
 }
 
+function convertLoginUsernameToEmailField(pendingEmail) {
+    var loginEmail = document.getElementById('login-email');
+    if (loginEmail) return loginEmail;
+
+    var loginUsername = document.getElementById('login-username');
+    if (!loginUsername) return null;
+
+    loginUsername.id = 'login-email';
+    loginUsername.type = 'email';
+    loginUsername.placeholder = 'email@contoh.com';
+    loginUsername.autocomplete = 'email';
+
+    var row = loginUsername.closest ? loginUsername.closest('.form-row') : loginUsername.parentNode;
+    var label = row ? row.querySelector('label') : null;
+    if (label) label.textContent = 'Email';
+    if (pendingEmail) loginUsername.value = pendingEmail;
+
+    return loginUsername;
+}
+
 function installAuthEmailFields() {
     var pendingEmail = localStorage.getItem('yaping_pendingEmail') || '';
+    var loginEmail = convertLoginUsernameToEmailField(pendingEmail);
 
-    if (!document.getElementById('login-email')) {
+    if (!loginEmail) {
         var loginPassword = document.getElementById('login-password');
         if (loginPassword && loginPassword.parentNode) {
             var loginRow = createAuthEmailRow('login-email', 'email@contoh.com');
-            loginPassword.parentNode.insertAdjacentElement('afterend', loginRow);
+            loginPassword.parentNode.insertAdjacentElement('beforebegin', loginRow);
             if (pendingEmail) loginRow.querySelector('input').value = pendingEmail;
         }
     }
