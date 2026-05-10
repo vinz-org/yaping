@@ -677,11 +677,77 @@ async function dbSyncCommunity(comm, isDelete) {
     }
 }
 
+// ===== BATCH SYNC FUNCTIONS FOR POSTS/COMMUNITIES =====
+
+async function dbSyncFeedPosts(posts) {
+    try {
+        if (!posts || posts.length === 0) return;
+        
+        for (var i = 0; i < posts.length; i++) {
+            var post = posts[i];
+            try {
+                await sbUpsert('feed_posts', postToDbRow(post), 'id');
+            } catch (e) {
+                console.warn('[DB] Failed to sync feed post:', post.id, e);
+            }
+        }
+        console.log('[DB] Synced ' + posts.length + ' feed posts to database');
+    } catch (e) {
+        console.error('[DB] dbSyncFeedPosts error:', e);
+    }
+}
+
+async function dbSyncCommunityPosts(postsByComm) {
+    try {
+        if (!postsByComm) return;
+        
+        var totalCount = 0;
+        for (var commId in postsByComm) {
+            var posts = postsByComm[commId];
+            if (!Array.isArray(posts)) continue;
+            
+            for (var i = 0; i < posts.length; i++) {
+                var post = posts[i];
+                try {
+                    await sbUpsert('community_posts', communityPostToDbRow(post), 'id');
+                    totalCount++;
+                } catch (e) {
+                    console.warn('[DB] Failed to sync community post:', post.id, e);
+                }
+            }
+        }
+        console.log('[DB] Synced ' + totalCount + ' community posts to database');
+    } catch (e) {
+        console.error('[DB] dbSyncCommunityPosts error:', e);
+    }
+}
+
+async function dbSyncCommunities(comms) {
+    try {
+        if (!comms || comms.length === 0) return;
+        
+        for (var i = 0; i < comms.length; i++) {
+            var comm = comms[i];
+            try {
+                await sbUpsert('communities', communityToDbRow(comm), 'id');
+            } catch (e) {
+                console.warn('[DB] Failed to sync community:', comm.id, e);
+            }
+        }
+        console.log('[DB] Synced ' + comms.length + ' communities to database');
+    } catch (e) {
+        console.error('[DB] dbSyncCommunities error:', e);
+    }
+}
+
 // ===== AUTO-START =====
 window.dbInit = dbInit;
 window.dbSyncPost = dbSyncPost;
 window.dbSyncCommunityPost = dbSyncCommunityPost;
 window.dbSyncCommunity = dbSyncCommunity;
+window.dbSyncFeedPosts = dbSyncFeedPosts;
+window.dbSyncCommunityPosts = dbSyncCommunityPosts;
+window.dbSyncCommunities = dbSyncCommunities;
 window.dbInstallHooks = dbInstallHooks;
 window.sbUpsert = sbUpsert;
 window.sbDelete = sbDelete;

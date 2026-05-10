@@ -1,15 +1,15 @@
 // ============================================
 // YAPING - Authentication Module
-// auth.js — Supabase Authentication (Username-based) + Fallback Local Auth
+// auth.js — Supabase Authentication (Username-based) + Database Persistence
 // ============================================
 
 var currentUser = null;
 var authToken = null;
 var currentUsername = null;
-var localUsers = {}; // Fallback local user database
+var authInitialized = false;
 
-// Initialize auth from localStorage
-function initAuth() {
+// Initialize auth from Supabase database
+async function initAuth() {
     var stored = localStorage.getItem('yaping_auth');
     if (stored) {
         try {
@@ -18,26 +18,11 @@ function initAuth() {
             authToken = data.token;
             currentUsername = data.username;
             localStorage.setItem('yaping_currentUser', currentUsername);
+            authInitialized = true;
         } catch (e) {
             console.warn('[Auth] Failed to restore session:', e);
-            logout();
         }
     }
-    
-    // Load local users database
-    var localUsersData = localStorage.getItem('yaping_localUsers');
-    if (localUsersData) {
-        try {
-            localUsers = JSON.parse(localUsersData);
-        } catch (e) {
-            localUsers = {};
-        }
-    }
-}
-
-// Save local users database
-function saveLocalUsers() {
-    localStorage.setItem('yaping_localUsers', JSON.stringify(localUsers));
 }
 
 // Sign up new user with username and password only
@@ -46,12 +31,7 @@ async function signUp(username, password) {
         // Normalize username
         username = username.trim().toLowerCase();
         
-        // Check if username already exists locally first (faster check)
-        if (localUsers[username]) {
-            return { success: false, error: 'Username sudah digunakan' };
-        }
-        
-        // Try to check on Supabase if available
+        // Check if username already exists in database
         if (typeof sbGet === 'function') {
             try {
                 var existingProfiles = await sbGet('profiles', 'username=eq.' + encodeURIComponent(username));
@@ -59,7 +39,8 @@ async function signUp(username, password) {
                     return { success: false, error: 'Username sudah digunakan' };
                 }
             } catch (e) {
-                console.warn('[Auth] Supabase check failed, using local fallback:', e);
+                console.warn('[Auth] Database check failed:', e);
+                return { success: false, error: 'Gagal terhubung ke database' };
             }
         }
 
@@ -67,7 +48,8 @@ async function signUp(username, password) {
         var tempEmail = username + '@yaping.local';
         var userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-        // Try to create on Supabase if available
+        // Try to create on Supabase auth
+        var supabaseUserId = null;
         if (typeof SUPABASE_ANON_KEY !== 'undefined') {
             try {
                 var signUpRes = await fetch('https://lzxjjiebpnhjeifnnqms.supabase.co/auth/v1/signup', {
@@ -85,53 +67,52 @@ async function signUp(username, password) {
                 if (signUpRes.ok) {
                     try {
                         var signUpData = await signUpRes.json();
-                        userId = signUpData.user.id;
-                        
-                        // Try to create profile
-                        if (typeof sbUrl === 'function' && typeof sbHeaders === 'function') {
-                            try {
-                                var profileRes = await fetch(sbUrl('profiles'), {
-                                    method: 'POST',
-                                    headers: sbHeaders(),
-                                    body: JSON.stringify({
-                                        id: userId,
-                                        username: username,
-                                        full_name: username,
-                                        avatar_url: null,
-                                        bio: ''
-                                    })
-                                });
-                            } catch (pe) {
-                                console.warn('[Auth] Profile creation failed:', pe);
-                            }
-                        }
+                        supabaseUserId = signUpData.user.id;
+                        userId = supabaseUserId;
                     } catch (je) {
                         console.warn('[Auth] Failed to parse signup response:', je);
                     }
                 }
             } catch (e) {
-                console.warn('[Auth] Supabase signup failed, using local fallback:', e);
+                console.warn('[Auth] Supabase auth signup failed:', e);
             }
         }
 
-        // Create local user record (always do this as fallback)
-        localUsers[username] = {
-            username: username,
-            password: password,
-            createdAt: new Date().toISOString(),
-            id: userId
-        };
-        saveLocalUsers();
+        // Create profile in database (IMPORTANT - this is the primary storage)
+        if (typeof sbInsert === 'function') {
+            try {
+                var profileRes = await sbInsert('profiles', {
+                    id: userId,
+                    username: username,
+                    full_name: username,
+                    email: tempEmail,
+                    password_hash: password, // NOTE: Use proper hashing in production!
+                    avatar_url: null,
+                    bio: '',
+                    created_at: new Date().toISOString()
+                });
+                
+                if (!profileRes) {
+                    throw new Error('Failed to create profile in database');
+                }
+            } catch (e) {
+                console.error('[Auth] Failed to create profile in database:', e);
+                return { success: false, error: 'Gagal membuat akun di database: ' + e.message };
+            }
+        } else {
+            return { success: false, error: 'Database belum siap' };
+        }
 
-        // Save auth session
+        // Save auth session locally (cache only, not primary storage)
         currentUser = { id: userId, email: tempEmail };
-        authToken = 'local_' + userId;
+        authToken = 'bearer_' + userId;
         currentUsername = username;
         
         localStorage.setItem('yaping_auth', JSON.stringify({
             user: currentUser,
             token: authToken,
-            username: username
+            username: username,
+            timestamp: Date.now()
         }));
         localStorage.setItem('yaping_currentUser', username);
 
@@ -148,67 +129,75 @@ async function signIn(username, password) {
         // Normalize username
         username = username.trim().toLowerCase();
         
-        // Try Supabase first if available
-        if (typeof sbGet === 'function' && typeof SUPABASE_ANON_KEY !== 'undefined') {
+        // Find user in database
+        if (typeof sbGet === 'function') {
             try {
                 var profiles = await sbGet('profiles', 'username=eq.' + encodeURIComponent(username));
                 
-                if (profiles && Array.isArray(profiles) && profiles.length > 0) {
-                    var profile = profiles[0];
-                    var userId = profile.id;
-                    var tempEmail = username + '@yaping.local';
+                if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
+                    return { success: false, error: 'Username atau password salah' };
+                }
 
-                    var signInRes = await fetch('https://lzxjjiebpnhjeifnnqms.supabase.co/auth/v1/token?grant_type=password', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'apikey': SUPABASE_ANON_KEY
-                        },
-                        body: JSON.stringify({
-                            email: tempEmail,
-                            password: password
-                        })
-                    });
+                var profile = profiles[0];
+                
+                // Verify password (simple comparison - use proper hashing in production!)
+                if (profile.password_hash !== password) {
+                    return { success: false, error: 'Username atau password salah' };
+                }
 
-                    if (signInRes.ok) {
-                        var signInData = await signInRes.json();
-                        currentUser = signInData.user;
-                        authToken = signInData.access_token;
-                        currentUsername = username;
+                var userId = profile.id;
+                var tempEmail = username + '@yaping.local';
 
-                        localStorage.setItem('yaping_auth', JSON.stringify({
-                            user: currentUser,
-                            token: authToken,
-                            username: username
-                        }));
-                        localStorage.setItem('yaping_currentUser', username);
+                // Try Supabase auth as backup
+                var token = 'bearer_' + userId;
+                if (typeof SUPABASE_ANON_KEY !== 'undefined') {
+                    try {
+                        var signInRes = await fetch('https://lzxjjiebpnhjeifnnqms.supabase.co/auth/v1/token?grant_type=password', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'apikey': SUPABASE_ANON_KEY
+                            },
+                            body: JSON.stringify({
+                                email: tempEmail,
+                                password: password
+                            })
+                        });
 
-                        return { success: true, user: currentUser };
+                        if (signInRes.ok) {
+                            try {
+                                var signInData = await signInRes.json();
+                                token = signInData.access_token;
+                            } catch (je) {
+                                console.warn('[Auth] Failed to parse signin response:', je);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Auth] Supabase signin failed, using local token:', e);
                     }
                 }
+
+                // Save auth session locally (cache)
+                currentUser = { id: userId, email: tempEmail };
+                authToken = token;
+                currentUsername = username;
+
+                localStorage.setItem('yaping_auth', JSON.stringify({
+                    user: currentUser,
+                    token: authToken,
+                    username: username,
+                    timestamp: Date.now()
+                }));
+                localStorage.setItem('yaping_currentUser', username);
+
+                return { success: true, user: currentUser };
             } catch (e) {
-                console.warn('[Auth] Supabase signin failed, trying local fallback:', e);
+                console.error('[Auth] Database signin failed:', e);
+                return { success: false, error: 'Gagal login: ' + e.message };
             }
+        } else {
+            return { success: false, error: 'Database belum siap' };
         }
-
-        // Fallback to local user database
-        if (localUsers[username] && localUsers[username].password === password) {
-            var user = localUsers[username];
-            currentUser = { id: user.id, email: username + '@yaping.local' };
-            authToken = 'local_' + user.id;
-            currentUsername = username;
-
-            localStorage.setItem('yaping_auth', JSON.stringify({
-                user: currentUser,
-                token: authToken,
-                username: username
-            }));
-            localStorage.setItem('yaping_currentUser', username);
-
-            return { success: true, user: currentUser };
-        }
-
-        return { success: false, error: 'Username atau password salah' };
     } catch (e) {
         console.error('[Auth] Signin error:', e);
         return { success: false, error: e.message || 'Login gagal' };

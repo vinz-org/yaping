@@ -701,10 +701,39 @@ function normalizeCommunityPosts(postsByCommunity) {
     return normalized;
 }
 
-function saveFeedPosts() { saveStoredJSON('yaping_feedPosts', feedPosts); }
-function saveCommunities() { saveStoredJSON('yaping_communities', communities); }
-function saveCommunityPosts() { saveStoredJSON('yaping_communityPosts', communityPosts); }
-function saveJoinedCommunities() { saveStoredJSON('yaping_joinedCommunities', joinedCommunities); }
+function saveFeedPosts() { 
+    saveStoredJSON('yaping_feedPosts', feedPosts);
+    // Async sync to database (fire and forget)
+    if (typeof dbSyncFeedPosts === 'function') {
+        dbSyncFeedPosts(feedPosts).catch(function(e) {
+            console.warn('[Script] Failed to sync feed posts to database:', e);
+        });
+    }
+}
+
+function saveCommunities() { 
+    saveStoredJSON('yaping_communities', communities);
+    // Async sync to database (fire and forget)
+    if (typeof dbSyncCommunities === 'function') {
+        dbSyncCommunities(communities).catch(function(e) {
+            console.warn('[Script] Failed to sync communities to database:', e);
+        });
+    }
+}
+
+function saveCommunityPosts() { 
+    saveStoredJSON('yaping_communityPosts', communityPosts);
+    // Async sync to database (fire and forget)
+    if (typeof dbSyncCommunityPosts === 'function') {
+        dbSyncCommunityPosts(communityPosts).catch(function(e) {
+            console.warn('[Script] Failed to sync community posts to database:', e);
+        });
+    }
+}
+
+function saveJoinedCommunities() { 
+    saveStoredJSON('yaping_joinedCommunities', joinedCommunities); 
+}
 
 function upsertFeedPost(post, shouldRender) {
     if (postHasXSSAttempt(post)) { rejectXSSPayload('feed-post'); return false; }
