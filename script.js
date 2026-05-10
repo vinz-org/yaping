@@ -2177,45 +2177,79 @@ function doSearch() {
 }
 
 // ===== UPDATES FUNCTIONS =====
+// Developer release notes/changelog
+var YAPING_RELEASES = [
+    {
+        version: 'v1.1.0',
+        date: 'May 10, 2026',
+        title: '✨ Fitur Baru & Bug Fixes',
+        features: [
+            '✅ Fixed login/signup bug dengan fallback local authentication',
+            '✅ Improved error handling di authentication system',
+            '✅ Updated UI untuk updates tab (changelog)',
+            '🔄 Optimisasi Supabase integration',
+            '⚡ Better error messages untuk user experience'
+        ]
+    },
+    {
+        version: 'v1.0.0',
+        date: 'April 2026',
+        title: '🚀 Launch Official Yaping',
+        features: [
+            '✨ New P2P social network dengan PeerJS',
+            '💬 Real-time messaging & comments',
+            '👥 Community support dengan kategori',
+            '🔐 Authentication system dengan Supabase',
+            '💾 Local storage + cloud sync',
+            '🛡️ Security system anti-XSS',
+            '📱 Mobile-friendly responsive design',
+            '🎨 Facebook 2008 style theme'
+        ]
+    }
+];
+
 function renderUpdates() {
     var feed = document.getElementById('updates-feed');
     if (!feed) return;
-    var allPosts = feedPosts.slice();
-    for (var cid in communityPosts) { allPosts = allPosts.concat(communityPosts[cid]); }
-    var filtered = allPosts.filter(function(post) {
-        if (currentUpdatesFilter === 'all') return true;
-        if (currentUpdatesFilter === 'post') return post.content && post.content.length > 0;
-        if (currentUpdatesFilter === 'like') return post.likes > 0;
-        if (currentUpdatesFilter === 'comment') return post.comments && post.comments.length > 0;
-        if (currentUpdatesFilter === 'edit') return post.edited;
-        return true;
-    });
-    filtered.sort(function(a, b) { return b.createdAt - a.createdAt; });
-    if (filtered.length === 0) { feed.innerHTML = '<div class="sidebar-empty">Belum ada aktivitas</div>'; return; }
+
     var html = '';
-    for (var i = 0; i < filtered.length && i < 50; i++) {
-        var post = filtered[i];
-        var timeAgo = formatTimeAgo(post.createdAt);
-        var preview = escapeHtml((post.content || '').substring(0, 80));
-        if (post.content && post.content.length > 80) preview += '...';
-        var icon = '📝';
-        if (currentUpdatesFilter === 'like' && post.likes > 0) icon = '👍';
-        if (currentUpdatesFilter === 'comment' && post.comments && post.comments.length > 0) icon = '💬';
-        html += '<div style="padding:10px; border-bottom:1px solid #eef2f5; cursor:pointer;" onclick="switchToTab(\'home\'); renderFeed();">' +
-            '<div style="font-size:12px; color:#777; margin-bottom:4px;">' + icon + ' ' + escapeHtml(post.author) + ' · ' + timeAgo + '</div>' +
-            '<div style="font-size:13px; color:#333;">' + preview + '</div>';
-        if (post.likes > 0) html += '<div style="font-size:11px; color:#999; margin-top:4px;">👍 ' + post.likes + ' like</div>';
-        if (post.comments && post.comments.length > 0) html += '<div style="font-size:11px; color:#999;">💬 ' + post.comments.length + ' komentar</div>';
+    for (var i = 0; i < YAPING_RELEASES.length; i++) {
+        var release = YAPING_RELEASES[i];
+        html += '<div style="padding: 16px; border-bottom: 1px solid #ddd; margin-bottom: 12px;">';
+        
+        // Version header
+        html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">';
+        html += '<div style="font-weight: bold; font-size: 16px; color: #3b5998;">' + escapeHtml(release.version) + '</div>';
+        html += '<div style="font-size: 12px; color: #999;">' + escapeHtml(release.date) + '</div>';
+        html += '</div>';
+        
+        // Title
+        html += '<div style="font-size: 14px; font-weight: bold; color: #333; margin-bottom: 8px;">' + escapeHtml(release.title) + '</div>';
+        
+        // Features list
+        html += '<ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #555; line-height: 1.6;">';
+        for (var j = 0; j < release.features.length; j++) {
+            html += '<li style="margin-bottom: 4px;">' + escapeHtml(release.features[j]) + '</li>';
+        }
+        html += '</ul>';
+        
         html += '</div>';
     }
+
     feed.innerHTML = html;
 }
 
 function filterUpdates(filterType, element) {
+    // Keep for compatibility but doesn't do anything for changelog
     currentUpdatesFilter = filterType;
     var buttons = document.querySelectorAll('#updates-filter .filter-btn');
     for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
     if (element) element.classList.add('active');
+    renderUpdates();
+}
+
+function loadUpdates() {
+    // Load updates when tab is clicked
     renderUpdates();
 }
 
