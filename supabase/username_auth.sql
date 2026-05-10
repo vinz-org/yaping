@@ -176,8 +176,11 @@ begin
         bio = coalesce(p_bio, ''),
         avatar_url = nullif(p_avatar_url, ''),
         updated_at = now()
-    where id = v_user_id
-    returning to_jsonb(public.profiles.*) into v_profile;
+    where id = v_user_id;
+
+    select to_jsonb(p) into v_profile
+    from public.profiles p
+    where p.id = v_user_id;
 
     return jsonb_build_object(
         'user', jsonb_build_object('id', v_user_id, 'username', v_username),
