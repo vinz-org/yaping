@@ -151,7 +151,10 @@ async function initAuth() {
     authInitialized = true;
 
     var stored = localStorage.getItem('yaping_auth');
-    if (!stored) return;
+    if (!stored) {
+        clearAuthSession();
+        return;
+    }
 
     try {
         var data = JSON.parse(stored);
