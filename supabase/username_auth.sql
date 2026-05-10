@@ -79,6 +79,59 @@ alter table public.profile_auth
 
 create unique index if not exists profile_auth_username_key on public.profile_auth(username);
 
+-- Clean up legacy profile password columns. Passwords belong in profile_auth,
+-- not users_profile. This fixes NOT NULL errors from older users_profile schemas.
+do $$
+begin
+    if exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'users_profile'
+          and column_name = 'password_hash'
+    ) then
+        execute $migrate_password_hash$
+            insert into public.profile_auth (user_id, username, password_hash)
+            select up.id,
+                   public.normalize_yaping_username(up.username),
+                   up.password_hash::text
+            from public.users_profile up
+            where up.id is not null
+              and public.normalize_yaping_username(up.username) ~ '^[a-z0-9_]{3,20}$'
+              and up.password_hash is not null
+              and trim(up.password_hash::text) <> ''
+            on conflict do nothing
+        $migrate_password_hash$;
+
+        alter table public.users_profile alter column password_hash drop not null;
+        alter table public.users_profile drop column password_hash;
+    end if;
+
+    if exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'users_profile'
+          and column_name = 'password'
+    ) then
+        execute $migrate_password$
+            insert into public.profile_auth (user_id, username, password_hash)
+            select up.id,
+                   public.normalize_yaping_username(up.username),
+                   crypt(up.password::text, gen_salt('bf'))
+            from public.users_profile up
+            where up.id is not null
+              and public.normalize_yaping_username(up.username) ~ '^[a-z0-9_]{3,20}$'
+              and up.password is not null
+              and trim(up.password::text) <> ''
+            on conflict do nothing
+        $migrate_password$;
+
+        alter table public.users_profile alter column password drop not null;
+        alter table public.users_profile drop column password;
+    end if;
+end $$;
+
 create table if not exists public.profile_sessions (
     session_token text primary key default encode(gen_random_bytes(32), 'hex'),
     user_id uuid not null references public.users_profile(id) on delete cascade,
