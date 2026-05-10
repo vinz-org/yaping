@@ -1,16 +1,25 @@
 // ============================================
 // YAPING - Features Module
-// features.js — Login, Signup, Edit Posts, Updates
+// features.js - Login, Signup, Edit Posts, Updates
 // ============================================
 
 var currentUpdatesFilter = 'all';
 var currentSortMode = 'newest'; // 'newest' or 'popular'
 
+function getAuthInputUsername(value) {
+    if (typeof normalizeAuthUsername === 'function') {
+        return normalizeAuthUsername(value);
+    }
+    return String(value || '').trim().toLowerCase().replace(/^@+/, '');
+}
+
 // ===== AUTHENTICATION HANDLERS =====
 
 async function handleLogin() {
-    var username = document.getElementById('login-username').value.trim();
-    var password = document.getElementById('login-password').value;
+    var usernameInput = document.getElementById('login-username');
+    var passwordInput = document.getElementById('login-password');
+    var username = getAuthInputUsername(usernameInput ? usernameInput.value : '');
+    var password = passwordInput ? passwordInput.value : '';
 
     if (!username || !password) {
         showToast('❌ Username dan password harus diisi');
@@ -23,16 +32,19 @@ async function handleLogin() {
         setTimeout(function() {
             switchToTab('home');
             location.reload();
-        }, 1000);
+        }, 800);
     } else {
         showToast('❌ ' + result.error);
     }
 }
 
 async function handleSignup() {
-    var username = document.getElementById('signup-username').value.trim();
-    var password = document.getElementById('signup-password').value;
-    var passwordConfirm = document.getElementById('signup-password-confirm').value;
+    var usernameInput = document.getElementById('signup-username');
+    var passwordInput = document.getElementById('signup-password');
+    var confirmInput = document.getElementById('signup-password-confirm');
+    var username = getAuthInputUsername(usernameInput ? usernameInput.value : '');
+    var password = passwordInput ? passwordInput.value : '';
+    var passwordConfirm = confirmInput ? confirmInput.value : '';
 
     if (!username || !password || !passwordConfirm) {
         showToast('❌ Semua field harus diisi');
@@ -56,11 +68,20 @@ async function handleSignup() {
 
     var result = await signUp(username, password);
     if (result.success) {
-        showToast('✅ Daftar berhasil! Silakan login');
-        setTimeout(function() {
-            switchToTab('login');
-            document.getElementById('login-username').value = username;
-        }, 1000);
+        if (result.needsLogin) {
+            showToast('✅ Daftar berhasil! Silakan login');
+            setTimeout(function() {
+                switchToTab('login');
+                var loginUsername = document.getElementById('login-username');
+                if (loginUsername) loginUsername.value = username;
+            }, 800);
+        } else {
+            showToast('✅ Daftar berhasil! Kamu sudah masuk');
+            setTimeout(function() {
+                switchToTab('home');
+                location.reload();
+            }, 800);
+        }
     } else {
         showToast('❌ ' + result.error);
     }
