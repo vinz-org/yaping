@@ -97,6 +97,15 @@
                 </div>
             </div>
 
+            <!-- Sort Options -->
+            <div class="content-box" style="padding: 12px; background: #f8f9fa; border-top: 1px solid #ddd; margin-bottom: 12px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="font-weight: bold; color: #666; font-size: 13px;">Urutkan:</span>
+                    <button id="sort-newest-btn" class="sort-btn active" onclick="setSortMode('newest')">🕐 Terbaru</button>
+                    <button id="sort-popular-btn" class="sort-btn" onclick="setSortMode('popular')">❤️ Terpopuler</button>
+                </div>
+            </div>
+
             <!-- Feed -->
             <div id="feed"></div>
         </div>

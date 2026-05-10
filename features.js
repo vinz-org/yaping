@@ -4,6 +4,7 @@
 // ============================================
 
 var currentUpdatesFilter = 'all';
+var currentSortMode = 'newest'; // 'newest' or 'popular'
 
 // ===== AUTHENTICATION HANDLERS =====
 
@@ -193,4 +194,45 @@ function findPostIndexById(posts, postId) {
 
 function jsString(str) {
     return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+}
+
+// ===== INITIALIZATION =====
+
+// Check if user is logged in on page load
+window.addEventListener('load', function() {
+    if (!isLoggedIn()) {
+        switchToTab('login');
+    } else {
+        // Load updates when switching to updates tab
+        var originalSwitchToTab = window.switchToTab;
+        window.switchToTab = function(tabName) {
+            if (tabName === 'updates') {
+                if (typeof loadUpdates === 'function') loadUpdates();
+            }
+            return originalSwitchToTab(tabName);
+        };
+    }
+});
+
+// ===== SORTING FUNCTIONALITY =====
+
+function setSortMode(mode) {
+    currentSortMode = mode;
+    
+    // Update button states
+    var newestBtn = document.getElementById('sort-newest-btn');
+    var popularBtn = document.getElementById('sort-popular-btn');
+    
+    if (newestBtn && popularBtn) {
+        if (mode === 'newest') {
+            newestBtn.classList.add('active');
+            popularBtn.classList.remove('active');
+        } else {
+            newestBtn.classList.remove('active');
+            popularBtn.classList.add('active');
+        }
+    }
+    
+    // Re-render feed with new sort
+    if (typeof renderFeed === 'function') renderFeed();
 }

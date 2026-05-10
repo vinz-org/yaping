@@ -1853,7 +1853,13 @@ function renderFeed() {
         return;
     }
     var sortedPosts = feedPosts.slice();
-    sortedPosts.sort(function(a, b) { var lA = a.likes || 0, lB = b.likes || 0; if (lB !== lA) return lB - lA; return b.createdAt - a.createdAt; });
+    if (typeof currentSortMode !== 'undefined' && currentSortMode === 'popular') {
+        // Sort by likes (most popular first), then by date
+        sortedPosts.sort(function(a, b) { var lA = a.likes || 0, lB = b.likes || 0; if (lB !== lA) return lB - lA; return b.createdAt - a.createdAt; });
+    } else {
+        // Sort by date (newest first)
+        sortedPosts.sort(function(a, b) { return b.createdAt - a.createdAt; });
+    }
     var html = '';
     for (var i = 0; i < sortedPosts.length; i++) {
         var post = sortedPosts[i];
