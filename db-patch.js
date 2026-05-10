@@ -13,14 +13,14 @@
         }
     }
 
-    function hasUsernameRpcSession() {
+    function hasSupabaseAuthSession() {
         var auth = getStoredAuth();
-        return !!(auth && auth.method === 'username_rpc' && auth.sessionToken && auth.username && auth.user && auth.user.id);
+        return !!(auth && auth.method === 'supabase_auth' && auth.accessToken && auth.username && auth.user && auth.user.id);
     }
 
     function loggedIn() {
         if (typeof isLoggedIn === 'function' && isLoggedIn()) return true;
-        return hasUsernameRpcSession();
+        return hasSupabaseAuthSession();
     }
 
     function requireLogin(message) {
@@ -69,16 +69,15 @@
         if (typeof renderFeed === 'function') renderFeed();
     }
 
-    function clearLegacyLoginCache() {
-        if (hasUsernameRpcSession()) return;
-
+    function clearManualRpcLoginCache() {
         var auth = getStoredAuth();
-        if (auth && auth.method !== 'username_rpc') {
+        if (auth && auth.method === 'username_rpc') {
             localStorage.removeItem('yaping_auth');
+            localStorage.removeItem('yaping_currentUser');
         }
     }
 
-    clearLegacyLoginCache();
+    clearManualRpcLoginCache();
 
     if (typeof showProfileSection === 'function') {
         var originalShowProfileSection = showProfileSection;
