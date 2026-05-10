@@ -5,7 +5,7 @@
 var YAPING_BADGE_USERS = [
     '@vinnn'
     '@hexaa',
-    '@qwerty',
+    'qwerty',
     'anotheroom',
     '@yaping',
 ];
