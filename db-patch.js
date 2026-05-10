@@ -69,16 +69,6 @@
         if (typeof renderFeed === 'function') renderFeed();
     }
 
-    function clearManualRpcLoginCache() {
-        var auth = getStoredAuth();
-        if (auth && auth.method === 'username_rpc') {
-            localStorage.removeItem('yaping_auth');
-            localStorage.removeItem('yaping_currentUser');
-        }
-    }
-
-    clearManualRpcLoginCache();
-
     if (typeof showProfileSection === 'function') {
         var originalShowProfileSection = showProfileSection;
         window.showProfileSection = showProfileSection = function(section, btn) {
