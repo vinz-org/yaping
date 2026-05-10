@@ -20,6 +20,45 @@ function getAuthInputEmail(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+function createAuthEmailRow(inputId, placeholder) {
+    var row = document.createElement('div');
+    row.className = 'form-row';
+
+    var label = document.createElement('label');
+    label.textContent = 'Email';
+
+    var input = document.createElement('input');
+    input.type = 'email';
+    input.id = inputId;
+    input.placeholder = placeholder || 'email@contoh.com';
+    input.autocomplete = 'email';
+
+    row.appendChild(label);
+    row.appendChild(input);
+    return row;
+}
+
+function installAuthEmailFields() {
+    var pendingEmail = localStorage.getItem('yaping_pendingEmail') || '';
+
+    if (!document.getElementById('login-email')) {
+        var loginPassword = document.getElementById('login-password');
+        if (loginPassword && loginPassword.parentNode) {
+            var loginRow = createAuthEmailRow('login-email', 'email@contoh.com');
+            loginPassword.parentNode.insertAdjacentElement('afterend', loginRow);
+            if (pendingEmail) loginRow.querySelector('input').value = pendingEmail;
+        }
+    }
+
+    if (!document.getElementById('signup-email')) {
+        var signupPassword = document.getElementById('signup-password');
+        if (signupPassword && signupPassword.parentNode) {
+            var signupRow = createAuthEmailRow('signup-email', 'email@contoh.com');
+            signupPassword.parentNode.insertAdjacentElement('afterend', signupRow);
+        }
+    }
+}
+
 // ===== AUTHENTICATION HANDLERS =====
 
 async function handleLogin() {
@@ -35,6 +74,7 @@ async function handleLogin() {
 
     var result = await signIn(email, password);
     if (result.success) {
+        localStorage.removeItem('yaping_pendingEmail');
         showToast('Login berhasil!');
         setTimeout(function() {
             switchToTab('home');
@@ -226,8 +266,12 @@ function jsString(str) {
 
 // ===== INITIALIZATION =====
 
+document.addEventListener('DOMContentLoaded', installAuthEmailFields);
+
 // Check if user is logged in on page load
 window.addEventListener('load', function() {
+    installAuthEmailFields();
+
     if (!isLoggedIn()) {
         switchToTab('login');
     } else {
