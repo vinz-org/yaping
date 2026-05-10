@@ -9,15 +9,15 @@ var currentSortMode = 'newest'; // 'newest' or 'popular'
 // ===== AUTHENTICATION HANDLERS =====
 
 async function handleLogin() {
-    var email = document.getElementById('login-email').value.trim();
+    var username = document.getElementById('login-username').value.trim();
     var password = document.getElementById('login-password').value;
 
-    if (!email || !password) {
-        showToast('❌ Email dan password harus diisi');
+    if (!username || !password) {
+        showToast('❌ Username dan password harus diisi');
         return;
     }
 
-    var result = await signIn(email, password);
+    var result = await signIn(username, password);
     if (result.success) {
         showToast('✅ Login berhasil!');
         setTimeout(function() {
@@ -30,13 +30,11 @@ async function handleLogin() {
 }
 
 async function handleSignup() {
-    var email = document.getElementById('signup-email').value.trim();
     var username = document.getElementById('signup-username').value.trim();
-    var fullName = document.getElementById('signup-fullname').value.trim();
     var password = document.getElementById('signup-password').value;
     var passwordConfirm = document.getElementById('signup-password-confirm').value;
 
-    if (!email || !username || !fullName || !password || !passwordConfirm) {
+    if (!username || !password || !passwordConfirm) {
         showToast('❌ Semua field harus diisi');
         return;
     }
@@ -56,12 +54,12 @@ async function handleSignup() {
         return;
     }
 
-    var result = await signUp(email, password, username, fullName);
+    var result = await signUp(username, password);
     if (result.success) {
         showToast('✅ Daftar berhasil! Silakan login');
         setTimeout(function() {
             switchToTab('login');
-            document.getElementById('login-email').value = email;
+            document.getElementById('login-username').value = username;
         }, 1000);
     } else {
         showToast('❌ ' + result.error);
