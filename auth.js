@@ -53,6 +53,9 @@ function getAuthErrorMessage(payload, fallback) {
     var raw = (payload && (payload.message || payload.error_description || payload.msg || payload.error)) || fallback || 'Request auth gagal';
     var lower = String(raw).toLowerCase();
 
+    if (lower.indexOf('could not find the function') !== -1 || lower.indexOf('schema cache') !== -1 || lower.indexOf('pgrst202') !== -1) {
+        return 'Auth database belum aktif. Jalankan supabase/username_auth.sql di Supabase SQL Editor, lalu refresh halaman.';
+    }
     if (lower.indexOf('username sudah digunakan') !== -1 || lower.indexOf('duplicate key') !== -1 || lower.indexOf('23505') !== -1) {
         return 'Username sudah digunakan';
     }
