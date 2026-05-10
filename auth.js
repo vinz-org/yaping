@@ -1,15 +1,14 @@
 // ============================================
 // YAPING - Authentication Module
-// auth.js - Supabase Authentication (Username-based) + profiles table
+// auth.js - Username/password RPC authentication
 // ============================================
 
 var authUser = null;
-var authToken = null;
+var authSessionToken = null;
 var currentUsername = null;
 var authInitialized = false;
 
-var AUTH_PROFILE_TABLE = 'profiles';
-var AUTH_EMAIL_DOMAIN = 'yaping.local';
+var AUTH_METHOD = 'username_rpc';
 var AUTH_USERNAME_MIN_LENGTH = 3;
 var AUTH_USERNAME_MAX_LENGTH = 20;
 
@@ -39,23 +38,6 @@ function validateAuthUsername(username) {
     return '';
 }
 
-function usernameToAuthEmail(username) {
-    return normalizeAuthUsername(username) + '@' + AUTH_EMAIL_DOMAIN;
-}
-
-function authRestHeaders(token, prefer) {
-    var config = getSupabaseConfig();
-    var bearer = token || (config && config.key) || '';
-    var headers = {
-        'Content-Type': 'application/json',
-        'apikey': config ? config.key : '',
-        'Authorization': 'Bearer ' + bearer
-    };
-
-    if (prefer) headers['Prefer'] = prefer;
-    return headers;
-}
-
 async function readResponseBody(response) {
     var text = await response.text();
     if (!text) return {};
@@ -68,33 +50,34 @@ async function readResponseBody(response) {
 }
 
 function getAuthErrorMessage(payload, fallback) {
-    var raw = (payload && (payload.error_description || payload.message || payload.msg || payload.error)) || fallback || 'Request auth gagal';
+    var raw = (payload && (payload.message || payload.error_description || payload.msg || payload.error)) || fallback || 'Request auth gagal';
     var lower = String(raw).toLowerCase();
 
-    if (lower.indexOf('already registered') !== -1 || lower.indexOf('user already') !== -1 || lower.indexOf('already exists') !== -1) {
+    if (lower.indexOf('username sudah digunakan') !== -1 || lower.indexOf('duplicate key') !== -1 || lower.indexOf('23505') !== -1) {
         return 'Username sudah digunakan';
     }
-    if (lower.indexOf('invalid login credentials') !== -1 || lower.indexOf('invalid grant') !== -1) {
+    if (lower.indexOf('username atau password salah') !== -1 || lower.indexOf('invalid login') !== -1) {
         return 'Username atau password salah';
     }
-    if (lower.indexOf('email not confirmed') !== -1 || lower.indexOf('not confirmed') !== -1) {
-        return 'Akun belum aktif di Supabase';
+    if (lower.indexOf('session') !== -1 && (lower.indexOf('invalid') !== -1 || lower.indexOf('expired') !== -1 || lower.indexOf('kadaluarsa') !== -1)) {
+        return 'Sesi login sudah habis. Silakan login ulang.';
     }
 
     return raw;
 }
 
-async function supabaseAuthRequest(path, body) {
+async function authRpc(functionName, params) {
     var config = getSupabaseConfig();
     if (!config) throw new Error('Database belum siap');
 
-    var response = await fetch(config.url + '/auth/v1/' + path, {
+    var response = await fetch(config.url + '/rest/v1/rpc/' + functionName, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'apikey': config.key
+            'apikey': config.key,
+            'Authorization': 'Bearer ' + config.key
         },
-        body: JSON.stringify(body || {})
+        body: JSON.stringify(params || {})
     });
 
     var payload = await readResponseBody(response);
@@ -105,82 +88,45 @@ async function supabaseAuthRequest(path, body) {
     return payload;
 }
 
-function getSessionFromAuthPayload(payload) {
+function normalizeAuthPayload(payload) {
     payload = payload || {};
-    var session = payload.session || payload;
-    var user = payload.user || (session && session.user) || null;
-    var token = payload.access_token || (session && session.access_token) || null;
+    if (Array.isArray(payload)) payload = payload[0] || {};
 
-    return { user: user, token: token };
-}
+    var user = payload.user || {};
+    var profile = payload.profile || {};
+    var username = normalizeAuthUsername(profile.username || user.username || payload.username);
+    var sessionToken = payload.session_token || payload.sessionToken || payload.token;
 
-function createProfilePayload(user, username, existingProfile) {
-    existingProfile = existingProfile || {};
+    if (!user.id && profile.id) user.id = profile.id;
+    if (!user.username && username) user.username = username;
 
     return {
-        id: user.id,
+        user: user,
+        profile: profile,
         username: username,
-        full_name: existingProfile.full_name || localStorage.getItem('yaping_currentFullname') || username,
-        avatar_url: existingProfile.avatar_url || localStorage.getItem('yaping_currentUserPhoto') || null,
-        bio: existingProfile.bio || localStorage.getItem('yaping_currentBio') || '',
-        updated_at: new Date().toISOString()
+        sessionToken: sessionToken,
+        expiresAt: payload.expires_at || payload.expiresAt || null
     };
 }
 
-async function fetchAuthProfileById(userId, token) {
-    var config = getSupabaseConfig();
-    if (!config || !userId) return null;
-
-    var query = 'select=id,username,full_name,avatar_url,bio,updated_at&id=eq.' + encodeURIComponent(userId) + '&limit=1';
-    var response = await fetch(config.url + '/rest/v1/' + AUTH_PROFILE_TABLE + '?' + query, {
-        method: 'GET',
-        headers: authRestHeaders(token)
-    });
-
-    var payload = await readResponseBody(response);
-    if (!response.ok) {
-        throw new Error('Gagal membaca profile: ' + getAuthErrorMessage(payload, response.status));
-    }
-
-    return Array.isArray(payload) && payload.length > 0 ? payload[0] : null;
-}
-
-async function upsertAuthProfile(user, username, token, existingProfile) {
-    var config = getSupabaseConfig();
-    if (!config) throw new Error('Database belum siap');
-    if (!user || !user.id) throw new Error('User id tidak ditemukan');
-
-    var profile = createProfilePayload(user, username, existingProfile);
-    var response = await fetch(config.url + '/rest/v1/' + AUTH_PROFILE_TABLE + '?on_conflict=id', {
-        method: 'POST',
-        headers: authRestHeaders(token, 'resolution=merge-duplicates,return=representation'),
-        body: JSON.stringify(profile)
-    });
-
-    var payload = await readResponseBody(response);
-    if (!response.ok) {
-        throw new Error('Gagal menyimpan profile: ' + getAuthErrorMessage(payload, response.status));
-    }
-
-    return Array.isArray(payload) && payload.length > 0 ? payload[0] : profile;
-}
-
-function persistAuthSession(user, token, username, profile) {
-    var safeUsername = normalizeAuthUsername(username || (profile && profile.username));
+function persistAuthSession(user, sessionToken, username, profile) {
+    var safeUsername = normalizeAuthUsername(username || (profile && profile.username) || (user && user.username));
     var safeUser = {
-        id: user.id,
-        email: user.email || usernameToAuthEmail(safeUsername)
+        id: user && user.id,
+        username: safeUsername
     };
 
     authUser = safeUser;
-    authToken = token;
+    authSessionToken = sessionToken;
     currentUsername = safeUsername;
     authInitialized = true;
 
     localStorage.setItem('yaping_auth', JSON.stringify({
+        method: AUTH_METHOD,
         user: safeUser,
-        token: authToken,
         username: currentUsername,
+        sessionToken: authSessionToken,
+        profile: profile || null,
         timestamp: Date.now()
     }));
     localStorage.setItem('yaping_currentUser', currentUsername);
@@ -192,7 +138,15 @@ function persistAuthSession(user, token, username, profile) {
     }
 }
 
-// Initialize auth from cached Supabase session.
+function clearAuthSession() {
+    authUser = null;
+    authSessionToken = null;
+    currentUsername = null;
+    localStorage.removeItem('yaping_auth');
+    localStorage.removeItem('yaping_userProfile');
+    localStorage.removeItem('yaping_currentUser');
+}
+
 async function initAuth() {
     authInitialized = true;
 
@@ -201,10 +155,13 @@ async function initAuth() {
 
     try {
         var data = JSON.parse(stored);
-        if (!data || !data.user || !data.token || !data.username) return;
+        if (!data || data.method !== AUTH_METHOD || !data.user || !data.sessionToken || !data.username) {
+            clearAuthSession();
+            return;
+        }
 
         authUser = data.user;
-        authToken = data.token;
+        authSessionToken = data.sessionToken;
         currentUsername = normalizeAuthUsername(data.username);
 
         if (currentUsername) {
@@ -212,11 +169,10 @@ async function initAuth() {
         }
     } catch (e) {
         console.warn('[Auth] Failed to restore session:', e);
-        localStorage.removeItem('yaping_auth');
+        clearAuthSession();
     }
 }
 
-// Sign up new user with username and password only.
 async function signUp(username, password) {
     try {
         username = normalizeAuthUsername(username);
@@ -225,42 +181,23 @@ async function signUp(username, password) {
         if (validationError) return { success: false, error: validationError };
         if (!password || password.length < 6) return { success: false, error: 'Password minimal 6 karakter' };
 
-        var email = usernameToAuthEmail(username);
-        var payload = await supabaseAuthRequest('signup', {
-            email: email,
-            password: password,
-            data: { username: username }
-        });
+        var payload = normalizeAuthPayload(await authRpc('signup_username', {
+            p_username: username,
+            p_password: password
+        }));
 
-        var session = getSessionFromAuthPayload(payload);
-        if (!session.user || !session.user.id) {
-            return { success: false, error: 'Akun gagal dibuat di Supabase' };
+        if (!payload.user.id || !payload.sessionToken) {
+            return { success: false, error: 'Signup gagal mendapatkan session' };
         }
 
-        var profile = null;
-        try {
-            profile = await upsertAuthProfile(session.user, username, session.token);
-        } catch (profileError) {
-            console.warn('[Auth] Profile sync after signup failed:', profileError);
-        }
-
-        if (session.token) {
-            persistAuthSession(session.user, session.token, username, profile);
-        }
-
-        return {
-            success: true,
-            user: session.user,
-            profile: profile,
-            needsLogin: !session.token
-        };
+        persistAuthSession(payload.user, payload.sessionToken, payload.username, payload.profile);
+        return { success: true, user: authUser, profile: payload.profile, needsLogin: false };
     } catch (e) {
         console.error('[Auth] Signup error:', e);
         return { success: false, error: e.message || 'Signup gagal' };
     }
 }
 
-// Sign in existing user with username and password.
 async function signIn(username, password) {
     try {
         username = normalizeAuthUsername(username);
@@ -269,71 +206,83 @@ async function signIn(username, password) {
         if (validationError) return { success: false, error: validationError };
         if (!password) return { success: false, error: 'Password harus diisi' };
 
-        var payload = await supabaseAuthRequest('token?grant_type=password', {
-            email: usernameToAuthEmail(username),
-            password: password
-        });
+        var payload = normalizeAuthPayload(await authRpc('login_username', {
+            p_username: username,
+            p_password: password
+        }));
 
-        var session = getSessionFromAuthPayload(payload);
-        if (!session.user || !session.user.id || !session.token) {
-            return { success: false, error: 'Login gagal mendapatkan session Supabase' };
+        if (!payload.user.id || !payload.sessionToken) {
+            return { success: false, error: 'Login gagal mendapatkan session' };
         }
 
-        var profile = null;
-        try {
-            profile = await fetchAuthProfileById(session.user.id, session.token);
-            if (!profile) {
-                profile = await upsertAuthProfile(session.user, username, session.token);
-            }
-        } catch (profileError) {
-            console.warn('[Auth] Profile sync after signin failed:', profileError);
-        }
-
-        persistAuthSession(session.user, session.token, username, profile);
-        return { success: true, user: authUser, profile: profile };
+        persistAuthSession(payload.user, payload.sessionToken, payload.username, payload.profile);
+        return { success: true, user: authUser, profile: payload.profile };
     } catch (e) {
         console.error('[Auth] Signin error:', e);
         return { success: false, error: e.message || 'Login gagal' };
     }
 }
 
-// Logout.
+async function updateProfileAuthenticated(username, fullName, bio, avatarUrl) {
+    try {
+        if (!isLoggedIn()) {
+            return { success: false, error: 'Silakan login dulu' };
+        }
+
+        username = normalizeAuthUsername(username || currentUsername);
+        var validationError = validateAuthUsername(username);
+        if (validationError) return { success: false, error: validationError };
+
+        var payload = normalizeAuthPayload(await authRpc('update_profile_authenticated', {
+            p_session_token: authSessionToken,
+            p_username: username,
+            p_full_name: String(fullName || '').trim() || username,
+            p_bio: String(bio || '').trim(),
+            p_avatar_url: avatarUrl || null
+        }));
+
+        if (!payload.user.id || !payload.sessionToken) {
+            payload.sessionToken = authSessionToken;
+        }
+
+        persistAuthSession(payload.user, payload.sessionToken, payload.username || username, payload.profile);
+        return { success: true, user: authUser, profile: payload.profile };
+    } catch (e) {
+        console.error('[Auth] Profile update error:', e);
+        return { success: false, error: e.message || 'Gagal menyimpan profil' };
+    }
+}
+
 function logout() {
-    authUser = null;
-    authToken = null;
-    currentUsername = null;
-    localStorage.removeItem('yaping_auth');
-    localStorage.removeItem('yaping_userProfile');
-    localStorage.removeItem('yaping_currentUser');
+    clearAuthSession();
     window.location.href = '#login';
     location.reload();
 }
 
-// Check if user is logged in.
 function isLoggedIn() {
-    return authUser !== null && authToken !== null && currentUsername !== null;
+    return authUser !== null && authSessionToken !== null && currentUsername !== null;
 }
 
-// Get current user ID.
 function getCurrentUserId() {
     return authUser ? authUser.id : null;
 }
 
-// Get current username.
 function getCurrentUsername() {
     return currentUsername || localStorage.getItem('yaping_currentUser') || '@user';
 }
 
-// Get auth headers for API calls.
+function getAuthSessionToken() {
+    return authSessionToken;
+}
+
 function getAuthHeaders() {
-    var headers = typeof sbHeaders === 'function' ? sbHeaders() : authRestHeaders();
-    if (authToken) {
-        headers['Authorization'] = 'Bearer ' + authToken;
+    var headers = typeof sbHeaders === 'function' ? sbHeaders() : {};
+    if (authSessionToken) {
+        headers['X-Yaping-Session'] = authSessionToken;
     }
     return headers;
 }
 
-// Log activity.
 async function logActivity(action, targetType, targetId, details) {
     if (!authUser) return;
 
@@ -351,5 +300,7 @@ async function logActivity(action, targetType, targetId, details) {
     }
 }
 
-// Initialize auth on page load.
+window.updateProfileAuthenticated = updateProfileAuthenticated;
+window.getAuthSessionToken = getAuthSessionToken;
+
 initAuth();
