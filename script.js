@@ -585,8 +585,19 @@ function loadBadgeList() {
 }
 
 function getBadgeHTML(username) {
-    if (!username || !badgedUsers.has(username)) return '';
-    return '<img src="badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
+    if (!username) return '';
+    
+    // Normalize username: ensure it has @ prefix for matching
+    var normalized = username.startsWith('@') ? username : '@' + username;
+    
+    // Check both with and without @ for backward compatibility
+    var plain = username.startsWith('@') ? username.substring(1) : username;
+    
+    if (badgedUsers.has(normalized) || badgedUsers.has(plain)) {
+        return '<img src="badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
+    }
+    
+    return '';
 }
 
 function getUserDisplayHTML(username) {

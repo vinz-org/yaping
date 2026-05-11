@@ -3,9 +3,12 @@
 // Tambahkan username di array di bawah ini
 // ============================================
 var YAPING_BADGE_USERS = [
-    '@vinnn'
+    '@vinnn',
     '@hexaa',
-    'qwerty',
-    'anotheroom',
+    '@bit',
+    '@anotheroom',
     '@yaping',
+    '@qwerty',
+    '@peer-motz41b4-amjo9vy',
+    '@peer-mop5ghaf-vknt1li'
 ];
