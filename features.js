@@ -6,6 +6,64 @@
 var currentUpdatesFilter = 'all';
 var currentSortMode = 'newest'; // 'newest' or 'popular'
 
+/** ipdata.co — batasi referrer/domain di dashboard agar kunci tidak disalahgunakan */
+var YAPING_IPDATA_API_KEY = '8f6b1eed5b5ef02ed99a902d1d5acd54eee762d16bdcfe08e352dc67';
+
+var SIGNUP_VPN_BLOCK_MESSAGE = 'VPN, proxy, Tor, atau jaringan anonim tidak diizinkan untuk mendaftar. Matikan VPN/proxy lalu coba lagi.';
+
+function checkSignupIpAllowedJsonp() {
+    return new Promise(function(resolve, reject) {
+        var cbName = 'yaping_ipdata_cb_' + Date.now();
+        var scriptEl = null;
+        var timeoutId = setTimeout(function() {
+            try { delete window[cbName]; } catch (e1) {}
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+            reject(new Error('ipdata_timeout'));
+        }, 15000);
+        window[cbName] = function(response) {
+            clearTimeout(timeoutId);
+            try { delete window[cbName]; } catch (e2) {}
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+            if (response && response.threat && response.threat.is_anonymous) {
+                resolve({ ok: false, message: SIGNUP_VPN_BLOCK_MESSAGE });
+            } else {
+                resolve({ ok: true });
+            }
+        };
+        scriptEl = document.createElement('script');
+        scriptEl.src = 'https://api.ipdata.co/?api-key=' + encodeURIComponent(YAPING_IPDATA_API_KEY) + '&callback=' + cbName;
+        scriptEl.onerror = function() {
+            clearTimeout(timeoutId);
+            try { delete window[cbName]; } catch (e3) {}
+            if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+            reject(new Error('ipdata_jsonp_error'));
+        };
+        document.head.appendChild(scriptEl);
+    });
+}
+
+async function checkSignupIpAllowed() {
+    var url = 'https://api.ipdata.co/?api-key=' + encodeURIComponent(YAPING_IPDATA_API_KEY);
+    try {
+        var res = await fetch(url, { method: 'GET', cache: 'no-store' });
+        if (!res.ok) {
+            return await checkSignupIpAllowedJsonp();
+        }
+        var response = await res.json();
+        if (response && response.threat && response.threat.is_anonymous) {
+            return { ok: false, message: SIGNUP_VPN_BLOCK_MESSAGE };
+        }
+        return { ok: true };
+    } catch (e) {
+        try {
+            return await checkSignupIpAllowedJsonp();
+        } catch (e2) {
+            console.warn('[Yaping] Pemeriksaan IP daftar dilewati:', e2);
+            return { ok: true };
+        }
+    }
+}
+
 function getAuthInputUsername(value) {
     if (typeof normalizeAuthUsername === 'function') {
         return normalizeAuthUsername(value);
@@ -133,6 +191,12 @@ async function handleSignup() {
 
     if (username.length < 3 || username.length > 20) {
         showToast('Username harus 3-20 karakter');
+        return;
+    }
+
+    var ipCheck = await checkSignupIpAllowed();
+    if (!ipCheck.ok) {
+        showToast(ipCheck.message || SIGNUP_VPN_BLOCK_MESSAGE);
         return;
     }
 
