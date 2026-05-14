@@ -547,9 +547,25 @@ function escapeHtml(text) {
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;',
-        \"'\": '&#039;'
+        "'": '&#039;'
     };
-    return String(text).replace(/[&<>\"']/g, function(m) { return map[m]; });
+    return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+function findPostById(posts, postId) {
+    if (!posts) return null;
+    for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === postId) return posts[i];
+    }
+    return null;
+}
+
+function findPostIndexById(posts, postId) {
+    if (!posts) return -1;
+    for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === postId) return i;
+    }
+    return -1;
 }
 
 // Load data on init

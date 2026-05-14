@@ -15,6 +15,11 @@ var currentUserPhoto = '';
 var hashtags = {};
 var updates = [];
 var postImages = {};
+var currentSortMode = 'newest'; // 'newest' or 'popular'
+var currentUpdatesFilter = 'all';
+var userFollowers = {}; // { username: [follower1, follower2, ...] }
+var userFollowing = {}; // { username: [following1, following2, ...] }
+var profileBanner = null;
 
 // ===== INITIALIZATION =====
 window.addEventListener('load', function() {
@@ -712,27 +717,11 @@ function closeFollowersModal() {
 }
 
 // ===== HELPER FUNCTIONS =====
-function escapeHtml(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function findPostById(posts, postId) {
-    if (!posts) return null;
-    for (var i = 0; i < posts.length; i++) {
-        if (posts[i].id === postId) return posts[i];
-    }
-    return null;
-}
-
-function findPostIndexById(posts, postId) {
-    if (!posts) return -1;
-    for (var i = 0; i < posts.length; i++) {
-        if (posts[i].id === postId) return i;
-    }
-    return -1;
-}
+// Note: These helper functions are defined in features.js to avoid conflicts
+// - escapeHtml()
+// - findPostById()
+// - findPostIndexById()
+// - jsString()
 
 function saveFeedPosts() {
     localStorage.setItem('yaping_feedposts', JSON.stringify(feedPosts));
@@ -772,6 +761,9 @@ function loadLocalData() {
             notifications = [];
         }
     }
+    
+    // Load follow data
+    loadFollowData();
 }
 
 function loadSampleData() {
@@ -831,4 +823,51 @@ function renderRightSidebar() {
                 '<button class="secondary-btn" onclick="showFollowing()" style="flex: 1; padding: 6px; font-size: 11px;">Diikuti</button>' +
             '</div>' +
         '</div>';
+}
+
+// ===== DATABASE SYNC =====
+async function dbPushLocalPosts() {
+    if (typeof sbUpsert !== 'function') {
+        showToast('Database belum siap');
+        return false;
+    }
+    
+    try {
+        for (var i = 0; i < feedPosts.length; i++) {
+            var post = feedPosts[i];
+            await sbUpsert('feed_posts', post, 'id');
+        }
+        showToast('✅ Semua postingan berhasil disync');
+        return true;
+    } catch (e) {
+        console.error('[DB] Push local posts error:', e);
+        showToast('❌ Gagal sync postingan');
+        return false;
+    }
+}
+
+async function dbPullRemotePosts() {
+    if (typeof sbGet !== 'function') {
+        console.warn('Database belum siap');
+        return false;
+    }
+    
+    try {
+        var posts = await sbGet('feed_posts', 'order=created_at.desc&limit=100');
+        if (Array.isArray(posts) && posts.length > 0) {
+            // Merge with existing posts
+            for (var i = 0; i < posts.length; i++) {
+                var dbPost = posts[i];
+                var idx = findPostIndexById(feedPosts, dbPost.id);
+                if (idx === -1) {
+                    feedPosts.push(dbPost);
+                }
+            }
+            saveFeedPosts();
+        }
+        return true;
+    } catch (e) {
+        console.warn('[DB] Pull remote posts error:', e);
+        return false;
+    }
 }
