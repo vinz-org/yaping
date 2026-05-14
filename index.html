@@ -91,6 +91,7 @@
                     <div class="post-options">
                         <button class="option-btn" onclick="addEmoji()">😊 Emoji</button>
                         <button class="option-btn" onclick="triggerMediaUpload()">📹 Media (MP3/MP4/Foto)</button>
+                        <button class="option-btn" id="blur-media-btn" onclick="toggleBlurMedia()" style="display:none;">🔲 Blur Media</button>
                         <input type="file" id="mediaUpload" accept=".mp3,.mp4,image/*" style="display:none;" onchange="handleMediaUpload(event)">
                     </div>
                     <button id="postBtn" class="primary-btn" onclick="submitPost()">Bagikan</button>
@@ -153,7 +154,11 @@
 
         <!-- TAB: PROFILE -->
         <div id="profile-tab" class="tab-content hidden">
-            <div class="profile-cover">
+            <div class="profile-cover" id="profile-cover-bg" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); position: relative;">
+                <div id="profile-banner" style="width: 100%; height: 150px; background-size: cover; background-position: center; position: relative;">
+                    <button class="profile-banner-upload" onclick="triggerBannerUpload()" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📷 Upload Banner</button>
+                    <input type="file" id="bannerUpload" accept="image/*" style="display:none;" onchange="handleBannerUpload(event)">
+                </div>
                 <div class="profile-cover-inner">
                     <div id="profile-avatar-big" class="profile-avatar-big">👤</div>
                     <div class="profile-name-area">
@@ -177,7 +182,18 @@
                     <div class="info-item"><strong>Total Post:</strong> <span id="pi-posts">0</span></div>
                     <div class="info-item"><strong>Like Diberikan:</strong> <span id="pi-likes">0</span></div>
                     <div class="info-item"><strong>Komunitas:</strong> <span id="pi-comms">3</span></div>
-                    <div class="info-item"><strong>Mengikuti:</strong> <span id="pi-following">0</span></div>
+                </div>
+                <div style="margin-top: 16px; display: flex; gap: 16px; border-top: 1px solid #ddd; padding-top: 12px;">
+                    <div style="flex: 1; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #3b5998;" id="pi-followers-count">0</div>
+                        <div style="font-size: 12px; color: #666;">Pengikut</div>
+                        <button class="secondary-btn" onclick="showFollowers()" style="margin-top: 6px; width: 100%; padding: 4px;">Lihat Pengikut</button>
+                    </div>
+                    <div style="flex: 1; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #3b5998;" id="pi-following-count">0</div>
+                        <div style="font-size: 12px; color: #666;">Diikuti</div>
+                        <button class="secondary-btn" onclick="showFollowing()" style="margin-top: 6px; width: 100%; padding: 4px;">Lihat Diikuti</button>
+                    </div>
                 </div>
             </div>
 
@@ -443,3 +459,14 @@
 <script src="db-patch.js"></script>
 </body>
 </html>
+
+        <!-- Followers/Following Modal -->
+        <div id="followers-modal" class="tab-content hidden" style="max-width: 500px; margin: 20px auto;">
+            <div class="content-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 id="followers-modal-title" style="margin: 0;">Pengikut</h3>
+                    <button onclick="closeFollowersModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+                </div>
+                <div id="followers-list" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+        </div>
