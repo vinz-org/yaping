@@ -261,6 +261,50 @@ function handleRealtimeMessage(msg) {
     }
 }
 
+function upsertFeedPost(post, skipResort) {
+    if (!post || typeof findPostIndexById !== 'function') return;
+    var idx = findPostIndexById(feedPosts, post.id);
+    if (idx !== -1) {
+        feedPosts[idx] = post;
+    } else {
+        feedPosts.unshift(post);
+    }
+    if (!skipResort && typeof feedPosts.sort === 'function') {
+        feedPosts.sort(function(a, b) {
+            return new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0);
+        });
+    }
+    if (typeof saveFeedPosts === 'function') saveFeedPosts();
+    if (typeof renderFeed === 'function') renderFeed();
+    if (typeof renderMyPosts === 'function') renderMyPosts();
+    if (typeof updateProfileStats === 'function') updateProfileStats();
+    if (typeof renderRightSidebar === 'function') renderRightSidebar();
+}
+
+function upsertCommunityPost(commId, post, skipResort) {
+    if (!post || commId === undefined || commId === null || typeof findPostIndexById !== 'function') return;
+    if (!communityPosts[commId]) communityPosts[commId] = [];
+    var list = communityPosts[commId];
+    var idx = findPostIndexById(list, post.id);
+    if (idx !== -1) {
+        list[idx] = post;
+    } else {
+        list.unshift(post);
+    }
+    if (!skipResort) {
+        list.sort(function(a, b) {
+            return new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0);
+        });
+    }
+    if (typeof saveCommunityPosts === 'function') saveCommunityPosts();
+    if (typeof currentViewedCommunity !== 'undefined' && currentViewedCommunity === parseInt(commId, 10)) {
+        var feedEl = document.getElementById('comm-posts-feed');
+        if (feedEl && typeof renderCommunityPosts === 'function') {
+            feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+        }
+    }
+}
+
 function handleRealtimeFeedPost(row) {
     if (!row) return;
     var post = dbRowToPost(row);
@@ -291,7 +335,7 @@ function handleRealtimeFeedPost(row) {
         renderFeed();
         renderMyPosts();
     } else {
-        upsertFeedPost(post, true);
+        upsertFeedPost(post, false);
     }
 }
 
@@ -322,10 +366,12 @@ function handleRealtimeCommunityPost(row) {
         saveCommunityPosts();
         if (typeof currentViewedCommunity !== 'undefined' && currentViewedCommunity === parseInt(commId, 10)) {
             var feedEl = document.getElementById('comm-posts-feed');
-            if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+            if (feedEl && typeof renderCommunityPosts === 'function') {
+                feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+            }
         }
     } else {
-        upsertCommunityPost(commId, post, true);
+        upsertCommunityPost(commId, post, false);
     }
 }
 
@@ -338,8 +384,10 @@ function handleRealtimeCommunityDelete(row) {
         communityPosts[commId].splice(idx, 1);
         saveCommunityPosts();
         if (typeof currentViewedCommunity !== 'undefined' && currentViewedCommunity === parseInt(commId, 10)) {
-            var feedEl = document.getElementById('comm-posts-feed');
-            if (feedEl) feedEl.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+            var feedEl2 = document.getElementById('comm-posts-feed');
+            if (feedEl2 && typeof renderCommunityPosts === 'function') {
+                feedEl2.innerHTML = renderCommunityPosts(parseInt(commId, 10));
+            }
         }
     }
 }
@@ -363,21 +411,27 @@ function handleRealtimeCommunity(row) {
 // ===== DATA CONVERTERS =====
 
 function postToDbRow(post) {
+    var created = post.createdAt || post.timestamp || new Date().toISOString();
+    var rawComments = post.comments;
+    var commentsArr = Array.isArray(rawComments) ? rawComments : [];
     return {
         id: post.id,
         author: post.author || '@user',
         content: post.content || '',
         likes: post.likes || 0,
         liked_by: post.likedBy || [],
-        created_at: post.createdAt || Date.now(),
-        media: post.media || null,
+        created_at: created,
+        media: post.media != null ? post.media : post.image,
         media_type: post.mediaType || null,
         origin_peer_id: post.originPeerId || null,
-        comments: post.comments || []
+        comments: commentsArr
     };
 }
 
 function communityPostToDbRow(post) {
+    var created = post.createdAt || post.timestamp || new Date().toISOString();
+    var rawComments = post.comments;
+    var commentsArr = Array.isArray(rawComments) ? rawComments : [];
     return {
         id: post.id,
         community_id: post.communityId,
@@ -385,57 +439,86 @@ function communityPostToDbRow(post) {
         content: post.content || '',
         likes: post.likes || 0,
         liked_by: post.likedBy || [],
-        created_at: post.createdAt || Date.now(),
-        media: post.media || null,
+        created_at: created,
+        media: post.media != null ? post.media : post.image,
         media_type: post.mediaType || null,
         origin_peer_id: post.originPeerId || null,
-        comments: post.comments || []
+        comments: commentsArr
     };
 }
 
 function dbRowToPost(row, communityId) {
     if (!row) return null;
+    var likedBy = [];
+    try {
+        likedBy = Array.isArray(row.liked_by) ? row.liked_by : (row.liked_by ? JSON.parse(row.liked_by) : []);
+    } catch (e) {
+        likedBy = [];
+    }
+    var commentsRaw = row.comments;
+    var commentsList = [];
+    try {
+        commentsList = Array.isArray(commentsRaw) ? commentsRaw : (commentsRaw ? JSON.parse(commentsRaw) : []);
+    } catch (e2) {
+        commentsList = [];
+    }
+    var commentCount = Array.isArray(commentsList) ? commentsList.length : (typeof commentsRaw === 'number' ? commentsRaw : 0);
     var post = {
         id: row.id,
         author: row.author,
         content: row.content || '',
         likes: row.likes || 0,
-        likedBy: Array.isArray(row.liked_by) ? row.liked_by : (row.liked_by ? JSON.parse(row.liked_by) : []),
+        likedBy: likedBy,
         createdAt: row.created_at,
+        timestamp: row.created_at,
         media: row.media || null,
         mediaType: row.media_type || null,
+        image: row.media || null,
         originPeerId: row.origin_peer_id || null,
-        comments: Array.isArray(row.comments) ? row.comments : (row.comments ? JSON.parse(row.comments) : []),
+        comments: commentCount,
+        commentsList: commentsList,
         scope: communityId ? 'community' : 'feed'
     };
-    if (communityId !== undefined) post.communityId = parseInt(communityId, 10);
+    if (communityId !== undefined && communityId !== null) {
+        var cidNum = parseInt(communityId, 10);
+        post.communityId = isNaN(cidNum) ? communityId : cidNum;
+    }
     return post;
 }
 
 function communityToDbRow(comm) {
+    var memberCount = 1;
+    if (Array.isArray(comm.members)) memberCount = comm.members.length;
+    else if (typeof comm.members === 'number' && comm.members > 0) memberCount = comm.members;
     return {
         id: comm.id,
         name: comm.name,
         description: comm.desc || comm.description || '',
         category: comm.category || '🎮',
-        members: comm.members || 1,
-        owner: comm.owner || '@user',
+        members: memberCount,
+        owner: comm.owner || comm.creator || '@user',
         banner: comm.banner || '#4472CA',
-        created_at: comm.createdAt || Date.now()
+        created_at: comm.createdAt || comm.created_at || Date.now()
     };
 }
 
 function dbRowToCommunity(row) {
     if (!row) return null;
+    var n = typeof row.members === 'number' ? row.members : (Array.isArray(row.members) ? row.members.length : 1);
+    var membersArr = Array.isArray(row.members) ? row.members.slice() : [];
+    while (membersArr.length < Math.max(1, n)) membersArr.push('');
     return {
         id: row.id,
         name: row.name,
         desc: row.description || '',
+        description: row.description || '',
         category: row.category || '🎮',
-        members: row.members || 1,
+        members: membersArr,
+        creator: row.owner || '@user',
         owner: row.owner,
         banner: row.banner || '#4472CA',
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        created_at: row.created_at
     };
 }
 
@@ -474,7 +557,9 @@ async function dbInit() {
                 if (!exists) { communities.push(comm); added++; }
             }
             if (added > 0) {
-                communities.sort(function(a, b) { return b.createdAt - a.createdAt; });
+                communities.sort(function(a, b) {
+                    return new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0);
+                });
                 saveCommunities();
                 renderCommunities('all');
             }
@@ -482,21 +567,28 @@ async function dbInit() {
 
         if (Array.isArray(dbFeedPosts)) {
             var feedAdded = 0;
+            var feedChanged = false;
             for (var k = 0; k < dbFeedPosts.length; k++) {
                 var post = dbRowToPost(dbFeedPosts[k]);
                 if (!post) continue;
                 if (findPostIndexById(feedPosts, post.id) === -1) {
                     feedPosts.push(post);
                     feedAdded++;
+                    feedChanged = true;
                 } else {
                     var idx = findPostIndexById(feedPosts, post.id);
                     feedPosts[idx].likes = post.likes;
                     feedPosts[idx].likedBy = post.likedBy;
                     feedPosts[idx].comments = post.comments;
+                    feedPosts[idx].timestamp = post.timestamp || feedPosts[idx].timestamp;
+                    feedPosts[idx].image = post.image != null ? post.image : feedPosts[idx].image;
+                    feedChanged = true;
                 }
             }
-            if (feedAdded > 0) {
-                feedPosts.sort(function(a, b) { return b.createdAt - a.createdAt; });
+            if (feedChanged) {
+                feedPosts.sort(function(a, b) {
+                    return new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0);
+                });
                 saveFeedPosts();
                 renderFeed();
                 renderMyPosts();
@@ -507,6 +599,7 @@ async function dbInit() {
 
         if (Array.isArray(dbCommPosts)) {
             var commAdded = 0;
+            var commChanged = false;
             for (var m = 0; m < dbCommPosts.length; m++) {
                 var cRow = dbCommPosts[m];
                 var cid = cRow.community_id;
@@ -516,18 +609,22 @@ async function dbInit() {
                 if (findPostIndexById(communityPosts[cid], cPost.id) === -1) {
                     communityPosts[cid].push(cPost);
                     commAdded++;
+                    commChanged = true;
                 } else {
                     var cIdx = findPostIndexById(communityPosts[cid], cPost.id);
                     communityPosts[cid][cIdx].likes = cPost.likes;
                     communityPosts[cid][cIdx].likedBy = cPost.likedBy;
                     communityPosts[cid][cIdx].comments = cPost.comments;
+                    commChanged = true;
                 }
             }
-            if (commAdded > 0) {
+            if (commChanged) {
                 saveCommunityPosts();
                 if (typeof currentViewedCommunity !== 'undefined' && currentViewedCommunity) {
                     var feedEl = document.getElementById('comm-posts-feed');
-                    if (feedEl) feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
+                    if (feedEl && typeof renderCommunityPosts === 'function') {
+                        feedEl.innerHTML = renderCommunityPosts(currentViewedCommunity);
+                    }
                 }
             }
         }
@@ -537,10 +634,12 @@ async function dbInit() {
 
         await dbPushLocalPosts();
         setupRealtime();
+        dbRefreshStatusUI();
 
     } catch (e) {
         console.error('[DB] Init error:', e);
         dbReady = false;
+        dbRefreshStatusUI();
     }
 }
 
@@ -603,7 +702,11 @@ async function dbPushLocalPosts() {
     for (var commId in communityPosts) {
         var posts = communityPosts[commId] || [];
         for (var j = 0; j < posts.length; j++) {
-            await sbUpsert('community_posts', communityPostToDbRow(posts[j]), 'id');
+            var cp = posts[j];
+            if (cp && (cp.communityId === undefined || cp.communityId === null)) {
+                cp.communityId = commId;
+            }
+            await sbUpsert('community_posts', communityPostToDbRow(cp), 'id');
         }
     }
 
@@ -741,6 +844,18 @@ async function dbSyncCommunities(comms) {
 }
 
 // ===== AUTO-START =====
+function dbRefreshStatusUI() {
+    var el = document.getElementById('db-status-value');
+    if (!el) return;
+    if (typeof dbReady !== 'undefined' && dbReady) {
+        el.textContent = 'Terhubung';
+        el.style.color = '#27ae60';
+    } else {
+        el.textContent = 'Tidak terhubung (cek konsol / RLS)';
+        el.style.color = '#e67e22';
+    }
+}
+
 window.dbInit = dbInit;
 window.dbSyncPost = dbSyncPost;
 window.dbSyncCommunityPost = dbSyncCommunityPost;
@@ -754,3 +869,8 @@ window.sbDelete = sbDelete;
 window.dbSetServerBan = dbSetServerBan;
 window.dbCheckServerBan = dbCheckServerBan;
 window.showServerBanScreen = showServerBanScreen;
+window.dbRefreshStatusUI = dbRefreshStatusUI;
+window.postToDbRow = postToDbRow;
+window.communityPostToDbRow = communityPostToDbRow;
+window.dbRowToPost = dbRowToPost;
+window.dbPushLocalPosts = dbPushLocalPosts;
