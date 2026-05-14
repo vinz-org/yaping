@@ -22,6 +22,8 @@ var emojiTargetInput = 'postInput';
 var communityBeingEdited = null;
 var badgedUsers = new Set();
 var following = new Set();
+/** @type {Record<string, string[]>} Daftar mengikuti per user (disinkron lewat P2P) — dipakai untuk menghitung pengikut */
+var knownFollowGraph = {};
 var currentUser = '@user';
 var currentFullname = 'Pengguna Yaping';
 var currentBio = '';
@@ -550,6 +552,7 @@ function initState() {
     currentProfileBanner = localStorage.getItem('yaping_profileBanner') || '';
 
     following = new Set(loadStoredJSON('yaping_following', []));
+    loadFollowGraphState();
     activeConnections = loadStoredJSON('yaping_activeConnections', []);
     knownPeerIds = loadStoredJSON('yaping_knownPeerIds', []);
     lastCommunityCreate = parseInt(localStorage.getItem('yaping_lastCommCreate') || '0', 10);
@@ -570,6 +573,7 @@ function initState() {
     feedPosts = normalizeFeedPosts(feedPosts);
     communityPosts = normalizeCommunityPosts(communityPosts);
     migrateDefaultUserIdentity();
+    syncMyFollowingIntoGraph();
     rebuildHashtags();
 }
 
@@ -1164,6 +1168,10 @@ function handlePeerData(data, remotePeerId) {
     } else if (data.type === 'like-post') { applyIncomingLike(data, remotePeerId); }
     else if (data.type === 'new-comment') { applyIncomingComment(data, remotePeerId); }
     else if (data.type === 'connection') { addNotification(data.message, 'connection'); }
+    else if (data.type === 'follow-graph') {
+        var who = data.fromUser || data.username;
+        if (who && Array.isArray(data.following)) mergeFollowGraphFromPeer(who, data.following);
+    }
     else if (data.type === 'peer-list') { mergeKnownPeerIds(data.knownPeerIds); }
 }
 
@@ -1242,12 +1250,16 @@ function wireConnection(conn) {
         connections[conn.peer] = conn; rememberPeerId(conn.peer); rememberActiveConnection(conn.peer);
         sendSyncToConnection(conn);
         conn.send({ type: 'peer-list', peerId: peerId, knownPeerIds: getShareablePeerIds() });
+        try { conn.send({ type: 'follow-graph', fromUser: currentUser, following: Array.from(following) }); } catch (e2) {}
         renderRightSidebar();
     });
     conn.on('data', function(data) { handlePeerData(data, conn.peer); });
     conn.on('error', function(err) { clearTimeout(pendingTimer); delete pendingConnections[conn.peer]; delete connections[conn.peer]; forgetActiveConnection(conn.peer); renderRightSidebar(); });
     conn.on('close', function() { clearTimeout(pendingTimer); delete pendingConnections[conn.peer]; delete connections[conn.peer]; forgetActiveConnection(conn.peer); renderRightSidebar(); });
-    if (conn.open) sendSyncToConnection(conn);
+    if (conn.open) {
+        sendSyncToConnection(conn);
+        try { conn.send({ type: 'follow-graph', fromUser: currentUser, following: Array.from(following) }); } catch (e3) {}
+    }
 }
 
 function rememberPeerId(id) {
@@ -1322,26 +1334,22 @@ function renderRightSidebar() {
     var sidebar = document.getElementById('right-sidebar');
     if (!sidebar) return;
     var peerScriptReady = typeof Peer !== 'undefined';
-    var statusText = peerReady ? 'Online' : (peerScriptReady ? 'Menghubungkan...' : 'Offline');
-    var statusColor = peerReady ? 'var(--fb-green)' : (peerScriptReady ? 'var(--fb-text-light)' : '#c0392b');
-    var networkText = peerReady ? (bootstrapReady ? 'Tersambung otomatis' : bootstrapStatus) : 'menunggu';
-    var connectionCount = getOpenConnectionCount();
-    var connectionText = connectionCount > 0 ? connectionCount : (peerReady ? 'menunggu' : '0');
-    var connectionHTML = '';
-    var hasConnections = false;
-    for (var id in connections) {
-        if (!connections[id] || !connections[id].open) continue;
-        hasConnections = true;
-        connectionHTML += '<div class="connection-item"><div class="connection-info"><div class="connection-id">Peer Yaping</div><small>tersambung</small></div></div>';
-    }
-    if (!hasConnections) connectionHTML = '<div class="sidebar-empty">Jaringan Yaping sudah aktif. Post akan sinkron otomatis saat ada pengguna lain online.</div>';
+    var peerMini = peerReady ? 'tersambung' : (peerScriptReady ? 'menyambung…' : 'nonaktif');
+    var followers = getFollowersOfUser(currentUser);
+    var followingArr = Array.from(following).sort();
     sidebar.innerHTML =
         '<div class="sidebar-box">' +
-            '<div class="sidebar-box-title">Online P2P</div>' +
-            '<div class="sidebar-stat"><span>Status</span><strong style="color:' + statusColor + '">' + statusText + '</strong></div>' +
-            '<div class="sidebar-stat"><span>Jaringan</span><strong>' + escapeHtml(networkText) + '</strong></div>' +
-            '<div class="sidebar-stat"><span>Peer aktif</span><strong>' + escapeHtml(String(connectionText)) + '</strong></div>' +
-            '<div class="peer-connection mt-8"><div class="connections-list">' + connectionHTML + '</div></div>' +
+            '<div class="sidebar-box-title">Pengikut & mengikuti</div>' +
+            '<p class="sidebar-follow-hint">Sinkron dari peer yang terhubung (P2P). Angka pengikut bertambah saat orang lain membagikan daftar ikuti mereka.</p>' +
+            '<div class="sidebar-follow-block">' +
+                '<div class="sidebar-follow-title">Pengikut (' + followers.length + ')</div>' +
+                '<div class="sidebar-follow-list">' + followListToHtml(followers, 'Belum ada pengikut tercatat') + '</div>' +
+            '</div>' +
+            '<div class="sidebar-follow-block">' +
+                '<div class="sidebar-follow-title">Mengikuti (' + followingArr.length + ')</div>' +
+                '<div class="sidebar-follow-list">' + followListToHtml(followingArr, 'Kamu belum mengikuti siapa pun') + '</div>' +
+            '</div>' +
+            '<div class="sidebar-p2p-mini">Jaringan P2P: ' + escapeHtml(peerMini) + '</div>' +
         '</div>';
 }
 
@@ -1621,11 +1629,109 @@ function banUserByBadge(username) {
     closeModal();
 }
 
+function loadFollowGraphState() {
+    var raw = loadStoredJSON('yaping_follow_graph', {});
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) knownFollowGraph = {};
+    else knownFollowGraph = raw;
+}
+
+function saveFollowGraphState() {
+    saveStoredJSON('yaping_follow_graph', knownFollowGraph);
+}
+
+function syncMyFollowingIntoGraph() {
+    if (!currentUser) return;
+    knownFollowGraph[currentUser] = Array.from(following);
+    saveFollowGraphState();
+}
+
+function migrateFollowGraphUsername(oldName, newName) {
+    if (!oldName || !newName || oldName === newName) return;
+    if (!knownFollowGraph || typeof knownFollowGraph !== 'object') knownFollowGraph = {};
+    if (knownFollowGraph[oldName] !== undefined) {
+        knownFollowGraph[newName] = knownFollowGraph[oldName];
+        delete knownFollowGraph[oldName];
+    }
+    for (var k in knownFollowGraph) {
+        if (!Object.prototype.hasOwnProperty.call(knownFollowGraph, k)) continue;
+        var arr = knownFollowGraph[k];
+        if (!Array.isArray(arr)) continue;
+        for (var i = 0; i < arr.length; i++) {
+            if (arr[i] === oldName) arr[i] = newName;
+        }
+    }
+    saveFollowGraphState();
+}
+
+function mergeFollowGraphFromPeer(peerUser, followingList) {
+    if (!peerUser || typeof peerUser !== 'string') return;
+    if (!Array.isArray(followingList)) return;
+    var clean = [];
+    var seen = {};
+    for (var i = 0; i < followingList.length; i++) {
+        var u = String(followingList[i] || '').trim();
+        if (!u || seen[u]) continue;
+        seen[u] = true;
+        clean.push(u);
+    }
+    knownFollowGraph[peerUser] = clean;
+    saveFollowGraphState();
+    renderRightSidebar();
+}
+
+function getFollowersOfUser(targetUser) {
+    var out = [];
+    var seen = {};
+    for (var peerU in knownFollowGraph) {
+        if (!Object.prototype.hasOwnProperty.call(knownFollowGraph, peerU)) continue;
+        var arr = knownFollowGraph[peerU];
+        if (!Array.isArray(arr)) continue;
+        for (var j = 0; j < arr.length; j++) {
+            if (arr[j] === targetUser && peerU !== targetUser) {
+                if (!seen[peerU]) { seen[peerU] = true; out.push(peerU); }
+                break;
+            }
+        }
+    }
+    return out.sort();
+}
+
+function getFollowingListDisplayed(username) {
+    if (username === currentUser) return Array.from(following).sort();
+    var arr = knownFollowGraph[username];
+    return Array.isArray(arr) ? arr.slice().sort() : [];
+}
+
+function getFollowerCountForUser(username) {
+    return getFollowersOfUser(username).length;
+}
+
+function getFollowingCountForUser(username) {
+    return getFollowingListDisplayed(username).length;
+}
+
+function followListToHtml(usernames, emptyLabel) {
+    if (!usernames || usernames.length === 0) {
+        return '<div class="sidebar-empty" style="padding:6px;font-size:11px;">' + escapeHtml(emptyLabel) + '</div>';
+    }
+    var html = '';
+    for (var i = 0; i < usernames.length; i++) {
+        html += '<div class="sidebar-follow-item" onclick="viewUserProfile(\'' + jsString(usernames[i]) + '\')">' + getUserDisplayHTML(usernames[i]) + '</div>';
+    }
+    return html;
+}
+
+function broadcastFollowGraphUpdate() {
+    syncMyFollowingIntoGraph();
+    broadcastPeerMessage({ type: 'follow-graph', following: Array.from(following) });
+}
+
 function toggleFollow(username) {
     if (!username || username === currentUser) return;
     if (following.has(username)) { following.delete(username); showToast('🚶 Batal mengikuti ' + username); }
     else { following.add(username); showToast('✅ Sekarang mengikuti ' + username); }
     saveStoredJSON('yaping_following', Array.from(following));
+    broadcastFollowGraphUpdate();
     updateProfileStats();
     viewUserProfile(username);
 }
@@ -1656,10 +1762,20 @@ function viewUserProfile(username) {
         }
         if (userPosts.length > 5) postsHtml += '<div style="font-size:11px;color:#3b5998;padding-top:6px;">+' + (userPosts.length - 5) + ' postingan lainnya</div>';
     }
+    var followersThem = getFollowersOfUser(username);
+    var followingThem = getFollowingListDisplayed(username);
+    var fc = followersThem.length;
+    var fct = followingThem.length;
     var content = '<div style="text-align:center;padding:12px 0 16px;"><div style="font-size:52px;line-height:1;">👤</div>' +
-        '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '</div>' +
-        '<div style="font-size:11px;color:#777;margin-top:3px;">' + (badgedUsers.has(username) ? '✅ Akun Resmi' : 'Member Yaping') + '</div>' +
-        '<div style="display:flex; justify-content:center; align-items:center; max-width:200px; margin: 8px auto 0;">' + followBtn + banButton + '</div></div>' +
+        '<div style="font-size:17px;font-weight:bold;margin-top:8px;color:#3b5998;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;">' + escapeHtml(username) + getBadgeHTML(username) + '<span style="font-size:12px;font-weight:normal;color:#666;">· ' + fc + ' pengikut · ' + fct + ' mengikuti</span></div>' +
+        (badgedUsers.has(username) ? '<div style="font-size:11px;color:#27ae60;margin-top:4px;">Akun resmi</div>' : '') +
+        '<div style="margin-top:10px;text-align:left;max-width:300px;margin-left:auto;margin-right:auto;padding:0 8px;">' +
+            '<div style="font-weight:bold;font-size:11px;color:#333;margin-bottom:4px;">Pengikut (' + fc + ')</div>' +
+            '<div style="max-height:88px;overflow-y:auto;border:1px solid #e5e5e5;border-radius:4px;padding:4px 6px;background:#fafafa;margin-bottom:8px;">' + followListToHtml(followersThem, 'Belum ada data (perlu sinkron P2P)') + '</div>' +
+            '<div style="font-weight:bold;font-size:11px;color:#333;margin-bottom:4px;">Mengikuti (' + fct + ')</div>' +
+            '<div style="max-height:88px;overflow-y:auto;border:1px solid #e5e5e5;border-radius:4px;padding:4px 6px;background:#fafafa;">' + followListToHtml(followingThem, 'Belum ada data (perlu sinkron P2P)') + '</div>' +
+        '</div>' +
+        '<div style="display:flex; justify-content:center; align-items:center; max-width:220px; margin: 10px auto 0;">' + followBtn + banButton + '</div></div>' +
         '<div style="border-top:1px solid #d8dfea;padding-top:10px;"><div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' + postsHtml + '</div>';
     showModal('Profil ' + username, content);
 }
@@ -2030,6 +2146,7 @@ function updateProfileStats() {
         if (badgedUsers.has(currentUser)) adminGroup.classList.remove('hidden');
         else adminGroup.classList.add('hidden');
     }
+    el = document.getElementById('pi-followers'); if (el) el.textContent = getFollowerCountForUser(currentUser);
     el = document.getElementById('pi-following'); if (el) el.textContent = following.size;
     var myPostCount = 0, likesGiven = 0;
     for (var f = 0; f < feedPosts.length; f++) {
@@ -2044,7 +2161,7 @@ function updateProfileStats() {
         }
     }
     el = document.getElementById('pi-username'); if (el) el.textContent = currentUser;
-    el = document.getElementById('pi-fullname'); if (el) el.textContent = currentFullname;
+    el = document.getElementById('pi-fullname'); if (el) el.textContent = currentFullname + ' · ' + getFollowerCountForUser(currentUser) + ' pengikut';
     el = document.getElementById('pi-posts'); if (el) el.textContent = myPostCount;
     el = document.getElementById('pi-likes'); if (el) el.textContent = likesGiven;
     var myComms = 0;
@@ -2053,6 +2170,8 @@ function updateProfileStats() {
     el = document.getElementById('sidebar-username'); if (el) el.innerHTML = escapeHtml(currentUser) + getBadgeHTML(currentUser);
     el = document.getElementById('profile-username-display'); if (el) el.innerHTML = escapeHtml(currentUser) + getBadgeHTML(currentUser);
     el = document.getElementById('profile-fullname-display'); if (el) el.textContent = currentFullname;
+    el = document.getElementById('profile-follow-meta');
+    if (el) el.textContent = ' · ' + getFollowerCountForUser(currentUser) + ' pengikut · ' + following.size + ' mengikuti';
 }
 
 function showProfileSection(section, btn) {
@@ -2084,6 +2203,7 @@ function saveProfile() {
     var elUser = document.getElementById('edit-username');
     var elName = document.getElementById('edit-fullname');
     var elBio = document.getElementById('edit-bio');
+    var prevUser = currentUser;
     var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
     if (newUsername !== currentUser) {
         var allUsers = new Set();
@@ -2096,6 +2216,9 @@ function saveProfile() {
     var newBio = elBio ? elBio.value.trim() : '';
     if (newUsername.length > USERNAME_MAX_LENGTH) { showToast('❌ Username maksimal ' + USERNAME_MAX_LENGTH + ' karakter.'); if (elUser) { elUser.value = newUsername.slice(0, USERNAME_MAX_LENGTH); elUser.focus(); } return; }
     currentUser = newUsername; currentFullname = newFullname; currentBio = newBio;
+    if (prevUser !== currentUser) migrateFollowGraphUsername(prevUser, currentUser);
+    syncMyFollowingIntoGraph();
+    broadcastFollowGraphUpdate();
     localStorage.setItem('yaping_currentUser', currentUser);
     localStorage.setItem('yaping_currentFullname', currentFullname);
     localStorage.setItem('yaping_currentBio', currentBio);

@@ -236,6 +236,59 @@ body {
     letter-spacing: 0.3px;
 }
 
+.sidebar-follow-hint {
+    font-size: 10px;
+    color: var(--fb-text-light);
+    margin: 0 0 10px;
+    line-height: 1.35;
+}
+
+.sidebar-follow-block {
+    margin-bottom: 10px;
+}
+
+.sidebar-follow-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--fb-text);
+    margin-bottom: 4px;
+}
+
+.sidebar-follow-list {
+    max-height: 120px;
+    overflow-y: auto;
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    background: var(--fb-blue-bg);
+    padding: 4px 6px;
+}
+
+.sidebar-follow-item {
+    padding: 4px 0;
+    cursor: pointer;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.sidebar-follow-item:last-child {
+    border-bottom: none;
+}
+
+.sidebar-p2p-mini {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--fb-text-light);
+    text-align: center;
+}
+
+.dark-mode .sidebar-follow-list {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.dark-mode .sidebar-follow-item {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
 .sidebar-profile-pic {
     width: 60px;
     height: 60px;
@@ -954,6 +1007,14 @@ body {
 
 .profile-name-area h2 { color: white; font-size: 20px; }
 .profile-name-area span { color: rgba(255,255,255,0.8); font-size: 12px; }
+
+.profile-name-area .profile-follow-meta {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: normal;
+    color: rgba(255, 255, 255, 0.88);
+}
 
 .profile-tabs {
     background: var(--fb-white);

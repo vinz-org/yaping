@@ -156,6 +156,8 @@
                 return;
             }
 
+            var prevUser = currentUser;
+
             var result = await updateProfileAuthenticated(newUsername, newFullname, newBio, currentUserPhoto || null);
             if (!result || !result.success) {
                 if (typeof showToast === 'function') showToast((result && result.error) || 'Gagal menyimpan profil');
@@ -168,6 +170,12 @@
                 bio: newBio,
                 avatar_url: currentUserPhoto || null
             });
+
+            if (typeof migrateFollowGraphUsername === 'function' && prevUser && prevUser !== currentUser) {
+                migrateFollowGraphUsername(prevUser, currentUser);
+            }
+            if (typeof syncMyFollowingIntoGraph === 'function') syncMyFollowingIntoGraph();
+            if (typeof broadcastFollowGraphUpdate === 'function') broadcastFollowGraphUpdate();
 
             if (typeof currentProfileBanner !== 'undefined') {
                 if (currentProfileBanner) localStorage.setItem('yaping_profileBanner', currentProfileBanner);
