@@ -90,6 +90,33 @@
         };
     }
 
+    if (typeof handleProfileBannerUpload === 'function') {
+        var originalHandleProfileBannerUpload = handleProfileBannerUpload;
+        window.handleProfileBannerUpload = handleProfileBannerUpload = function(event) {
+            if (!requireLogin('Silakan login dulu untuk ubah banner profil')) {
+                if (event && event.target) event.target.value = '';
+                return;
+            }
+            return originalHandleProfileBannerUpload(event);
+        };
+    }
+
+    if (typeof triggerProfileBannerUpload === 'function') {
+        var originalTriggerProfileBannerUpload = triggerProfileBannerUpload;
+        window.triggerProfileBannerUpload = triggerProfileBannerUpload = function() {
+            if (!requireLogin('Silakan login dulu untuk ubah banner profil')) return;
+            return originalTriggerProfileBannerUpload();
+        };
+    }
+
+    if (typeof clearProfileBanner === 'function') {
+        var originalClearProfileBanner = clearProfileBanner;
+        window.clearProfileBanner = clearProfileBanner = function() {
+            if (!requireLogin('Silakan login dulu untuk mengubah banner profil')) return;
+            return originalClearProfileBanner();
+        };
+    }
+
     if (typeof saveProfile === 'function') {
         window.saveProfile = saveProfile = async function() {
             if (!requireLogin('Silakan login dulu untuk menyimpan profil')) return;
@@ -141,6 +168,12 @@
                 bio: newBio,
                 avatar_url: currentUserPhoto || null
             });
+
+            if (typeof currentProfileBanner !== 'undefined') {
+                if (currentProfileBanner) localStorage.setItem('yaping_profileBanner', currentProfileBanner);
+                else localStorage.removeItem('yaping_profileBanner');
+            }
+            if (typeof renderProfileBanner === 'function') renderProfileBanner();
 
             if (typeof showToast === 'function') showToast('Profil berhasil diperbarui!');
             if (typeof showProfileSection === 'function') {

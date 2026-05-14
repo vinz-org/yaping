@@ -898,6 +898,7 @@ body {
 
 /* ========== PROFILE ========== */
 .profile-cover {
+    position: relative;
     background: linear-gradient(135deg, var(--fb-blue-dark), var(--fb-blue-light));
     border: 1px solid var(--fb-border);
     border-radius: 3px;
@@ -906,9 +907,37 @@ body {
 }
 
 .profile-cover-inner {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 15px;
+}
+
+.profile-cover-banner-btn {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    z-index: 2;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-family: 'Tahoma', sans-serif;
+    font-weight: bold;
+    color: var(--fb-blue);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--fb-border);
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.profile-cover-banner-btn:hover {
+    background: white;
+}
+
+.profile-cover.has-banner .profile-name-area h2,
+.profile-cover.has-banner .profile-name-area span {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
 .profile-avatar-big {

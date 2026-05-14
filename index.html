@@ -153,7 +153,7 @@
 
         <!-- TAB: PROFILE -->
         <div id="profile-tab" class="tab-content hidden">
-            <div class="profile-cover">
+            <div id="profile-cover" class="profile-cover">
                 <div class="profile-cover-inner">
                     <div id="profile-avatar-big" class="profile-avatar-big">👤</div>
                     <div class="profile-name-area">
@@ -161,6 +161,8 @@
                         <span id="profile-fullname-display">Pengguna Yaping</span>
                     </div>
                 </div>
+                <button type="button" class="profile-cover-banner-btn" onclick="triggerProfileBannerUpload()" title="Unggah foto banner profil">📷 Ubah banner</button>
+                <input type="file" id="profileBannerInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="handleProfileBannerUpload(event)">
             </div>
             <div class="profile-tabs">
                 <button class="profile-tab-btn active" onclick="showProfileSection('info', this)">Informasi</button>
@@ -197,6 +199,17 @@
                     </div>
                     <input type="file" id="profilePhotoInput" accept="image/*" onchange="handleProfilePhotoUpload(event)" style="padding: 6px 0;">
                     <small style="color: var(--fb-text-light);">Format: JPG, PNG, GIF, WebP. Maks 5MB.</small>
+                </div>
+                <div class="form-row">
+                    <label>Banner profil</label>
+                    <div id="banner-preview-container" style="margin-bottom: 10px; display: none;">
+                        <img id="banner-preview" src="" alt="Pratinjau banner" style="width: 100%; max-width: 420px; max-height: 100px; border-radius: 3px; object-fit: cover; border: 2px solid var(--fb-border);">
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <button type="button" class="secondary-btn" onclick="triggerProfileBannerUpload()">Pilih gambar banner</button>
+                        <button type="button" class="secondary-btn" onclick="clearProfileBanner()">Hapus banner</button>
+                    </div>
+                    <small style="color: var(--fb-text-light);">JPG, PNG, GIF, WebP. Maks 5MB. Klik Simpan Perubahan untuk menyimpan.</small>
                 </div>
                 <div class="form-row">
                     <label>Username</label>

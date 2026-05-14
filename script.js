@@ -26,6 +26,7 @@ var currentUser = '@user';
 var currentFullname = 'Pengguna Yaping';
 var currentBio = '';
 var currentUserPhoto = '';
+var currentProfileBanner = '';
 var peer = null;
 var connections = {};
 var pendingConnections = {};
@@ -546,6 +547,7 @@ function initState() {
     currentFullname = localStorage.getItem('yaping_currentFullname') || 'Pengguna Yaping';
     currentBio = localStorage.getItem('yaping_currentBio') || '';
     currentUserPhoto = localStorage.getItem('yaping_currentUserPhoto') || '';
+    currentProfileBanner = localStorage.getItem('yaping_profileBanner') || '';
 
     following = new Set(loadStoredJSON('yaping_following', []));
     activeConnections = loadStoredJSON('yaping_activeConnections', []);
@@ -630,7 +632,7 @@ function switchToTab(tabName) {
     }
 
     if (tabName === 'komunitas') renderCommunities('all');
-    else if (tabName === 'profile') { updateProfileStats(); renderMyPosts(); }
+    else if (tabName === 'profile') { updateProfileStats(); renderMyPosts(); renderProfileBanner(); }
     else if (tabName === 'home') renderFeed();
     else if (tabName === 'search') renderSearchTab();
     else if (tabName === 'hashtags') renderHashtags();
@@ -1413,6 +1415,63 @@ function handleProfilePhotoUpload(event) {
     reader.readAsDataURL(file);
 }
 
+function triggerProfileBannerUpload() {
+    var input = document.getElementById('profileBannerInput');
+    if (input) input.click();
+}
+
+function handleProfileBannerUpload(event) {
+    var file = event.target && event.target.files ? event.target.files[0] : null;
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('Ukuran banner terlalu besar (maksimal 5MB)'); if (event.target) event.target.value = ''; return; }
+    var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (validTypes.indexOf(file.type) === -1) { showToast('Format tidak didukung. Gunakan JPG, PNG, GIF, atau WebP'); if (event.target) event.target.value = ''; return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var data = e.target.result;
+        currentProfileBanner = data;
+        renderProfileBanner();
+        var preview = document.getElementById('banner-preview');
+        var container = document.getElementById('banner-preview-container');
+        if (preview && container) {
+            var safe = sanitizeMediaSrc(data, 'image');
+            if (safe) { preview.src = safe; container.style.display = 'block'; }
+        }
+        showToast('Banner dipilih. Klik "Simpan Perubahan" untuk menyimpan.');
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearProfileBanner() {
+    currentProfileBanner = '';
+    var input = document.getElementById('profileBannerInput');
+    if (input) input.value = '';
+    var preview = document.getElementById('banner-preview');
+    var container = document.getElementById('banner-preview-container');
+    if (preview && container) { preview.removeAttribute('src'); container.style.display = 'none'; }
+    renderProfileBanner();
+    showToast('Banner dihapus dari tampilan. Simpan Perubahan untuk mengonfirmasi.');
+}
+
+function renderProfileBanner() {
+    var cover = document.getElementById('profile-cover');
+    if (!cover) return;
+    var safe = sanitizeMediaSrc(currentProfileBanner, 'image');
+    if (safe) {
+        cover.classList.add('has-banner');
+        cover.style.backgroundImage = 'linear-gradient(0deg, rgba(0,0,0,0.42), rgba(0,0,0,0.15)), url(' + JSON.stringify(safe) + ')';
+        cover.style.backgroundSize = 'cover';
+        cover.style.backgroundPosition = 'center';
+        cover.style.backgroundRepeat = 'no-repeat';
+    } else {
+        cover.classList.remove('has-banner');
+        cover.style.backgroundImage = '';
+        cover.style.backgroundSize = '';
+        cover.style.backgroundPosition = '';
+        cover.style.backgroundRepeat = '';
+    }
+}
+
 function renderProfileAvatar() {
     var avatarEl = document.getElementById('profile-avatar-big');
     if (!avatarEl) return;
@@ -2010,6 +2069,13 @@ function showProfileSection(section, btn) {
         el = document.getElementById('edit-bio'); if (el) el.value = currentBio;
         var safePhoto = sanitizeMediaSrc(currentUserPhoto, 'image');
         if (safePhoto) { var preview = document.getElementById('photo-preview'); var container = document.getElementById('photo-preview-container'); if (preview && container) { preview.src = safePhoto; container.style.display = 'block'; } }
+        var safeBanner = sanitizeMediaSrc(currentProfileBanner, 'image');
+        var bPreview = document.getElementById('banner-preview');
+        var bContainer = document.getElementById('banner-preview-container');
+        if (bPreview && bContainer) {
+            if (safeBanner) { bPreview.src = safeBanner; bContainer.style.display = 'block'; }
+            else { bPreview.removeAttribute('src'); bContainer.style.display = 'none'; }
+        }
         var secEdit = document.getElementById('profile-edit-section'); if (secEdit) secEdit.classList.remove('hidden');
     }
 }
@@ -2034,7 +2100,9 @@ function saveProfile() {
     localStorage.setItem('yaping_currentFullname', currentFullname);
     localStorage.setItem('yaping_currentBio', currentBio);
     if (currentUserPhoto) localStorage.setItem('yaping_currentUserPhoto', currentUserPhoto);
-    renderProfileAvatar(); renderSidebarProfilePic(); updateProfileStats(); renderRightSidebar(); renderFeed();
+    if (currentProfileBanner) localStorage.setItem('yaping_profileBanner', currentProfileBanner);
+    else localStorage.removeItem('yaping_profileBanner');
+    renderProfileAvatar(); renderSidebarProfilePic(); renderProfileBanner(); updateProfileStats(); renderRightSidebar(); renderFeed();
     showToast('✅ Profil berhasil diperbarui!');
     showProfileSection('info', document.querySelector('.profile-tab-btn'));
 }
@@ -2333,6 +2401,7 @@ window.findPostIndexById = findPostIndexById;
 document.addEventListener('DOMContentLoaded', async function() {
     // 1. Init state dari localStorage
     initState();
+    renderProfileBanner();
 
     // 2. Cek security ban
     if (await enforceSecurityBan()) return;
@@ -2374,6 +2443,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     updateProfileStats();
     renderProfileAvatar();
     renderSidebarProfilePic();
+    renderProfileBanner();
 
     // Request Notification Permission
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
