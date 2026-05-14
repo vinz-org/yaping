@@ -164,30 +164,32 @@ function renderFeed() {
     for (var i = 0; i < sorted.length; i++) {
         var post = sorted[i];
         var isOwn = post.author === getCurrentUsername();
+        var escapeFunc = typeof escapeHtml === 'function' ? escapeHtml : function(t) { return String(t).replace(/[&<>]/g, function(c) { var m = {'&':'&amp;','<':'&lt;','>':'&gt;'}; return m[c]; }); };
         
         html += '<div class="content-box" style="margin-bottom: 16px;">' +
             '<div style="display: flex; justify-content: space-between; align-items: start;">' +
-            '<div><strong>' + escapeHtml(post.author) + '</strong><br>' +
+            '<div><strong>' + escapeFunc(post.author) + '</strong><br>' +
             '<small style="color: #666;">' + new Date(post.timestamp).toLocaleString('id-ID') + '</small></div>';
         
         if (isOwn) {
+            var jsStringFunc = typeof jsString === 'function' ? jsString : function(s) { return String(s).replace(/'/g, "\\'"); };
             html += '<div style="display: flex; gap: 4px;">' +
-                '<button class="secondary-btn" style="padding: 2px 6px; font-size: 11px;" onclick="showEditPostModal(\'' + jsString(post.id) + '\')">Edit</button>' +
-                '<button class="danger-btn" style="padding: 2px 6px; font-size: 11px;" onclick="deletePost(\'' + jsString(post.id) + '\')">Hapus</button>' +
+                '<button class="secondary-btn" style="padding: 2px 6px; font-size: 11px;" onclick="showEditPostModal(\'' + jsStringFunc(post.id) + '\')">Edit</button>' +
+                '<button class="danger-btn" style="padding: 2px 6px; font-size: 11px;" onclick="deletePost(\'' + jsStringFunc(post.id) + '\')">Hapus</button>' +
                 '</div>';
         }
         
         html += '</div>' +
-            '<div style="margin: 8px 0; white-space: pre-wrap;">' + escapeHtml(post.content) + '</div>';
+            '<div style="margin: 8px 0; white-space: pre-wrap;">' + escapeFunc(post.content) + '</div>';
         
         if (post.image) {
             html += '<img src="' + post.image + '" style="max-width: 100%; max-height: 300px; border-radius: 4px; margin-bottom: 8px;">';
         }
         
         html += '<div style="display: flex; gap: 12px; padding-top: 8px; border-top: 1px solid #eee; font-size: 12px; color: #666;">' +
-            '<button class="option-btn" onclick="likePost(\'' + jsString(post.id) + '\')">❤️ ' + (post.likes || 0) + '</button>' +
-            '<button class="option-btn" onclick="commentPost(\'' + jsString(post.id) + '\')">💬 ' + (post.comments || 0) + '</button>' +
-            '<button class="option-btn" onclick="sharePost(\'' + jsString(post.id) + '\')">🔄 Bagikan</button>' +
+            '<button class="option-btn" onclick="likePost(\'' + (typeof jsString === 'function' ? jsString(post.id) : post.id) + '\')">❤️ ' + (post.likes || 0) + '</button>' +
+            '<button class="option-btn" onclick="commentPost(\'' + (typeof jsString === 'function' ? jsString(post.id) : post.id) + '\')">💬 ' + (post.comments || 0) + '</button>' +
+            '<button class="option-btn" onclick="sharePost(\'' + (typeof jsString === 'function' ? jsString(post.id) : post.id) + '\')">🔄 Bagikan</button>' +
             '</div>' +
             '</div>';
     }
@@ -500,6 +502,24 @@ function loadProfileForEdit() {
     if (userEl) userEl.value = getCurrentUsername();
     if (nameEl) nameEl.value = currentFullname;
     if (bioEl) bioEl.value = currentBio;
+}
+
+function saveProfile() {
+    // This will be overridden by db-patch.js with authenticated version
+    // Basic local save
+    var userEl = document.getElementById('edit-username');
+    var nameEl = document.getElementById('edit-fullname');
+    var bioEl = document.getElementById('edit-bio');
+    
+    currentFullname = nameEl ? nameEl.value.trim() || currentFullname : currentFullname;
+    currentBio = bioEl ? bioEl.value.trim() : '';
+    
+    localStorage.setItem('yaping_currentFullname', currentFullname);
+    localStorage.setItem('yaping_currentBio', currentBio);
+    
+    showToast('Profil berhasil disimpan');
+    showProfileSection('info', document.querySelector('.profile-tab-btn'));
+    renderProfileInfo();
 }
 
 function handleProfilePhotoUpload(event) {
