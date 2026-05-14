@@ -6,6 +6,10 @@
 // ===== GLOBAL VARIABLES =====
 var feedPosts = [];
 var communityList = [];
+/** Referensi sama ke communityList — dipakai db.js (Supabase) */
+var communities = communityList;
+/** Post per komunitas: { [communityId]: Post[] } */
+var communityPosts = {};
 var myPosts = [];
 var notifications = [];
 var currentUser = 'user';
@@ -24,30 +28,44 @@ var profileBanner = null;
 // ===== INITIALIZATION =====
 window.addEventListener('load', function() {
     loadLocalData();
-    
-    // Setup auth check
+
+    if (typeof dbInstallHooks === 'function') {
+        dbInstallHooks();
+    }
+
     if (typeof initAuth === 'function') {
         initAuth();
     }
-    
-    // Check if logged in, otherwise show login
-    setTimeout(function() {
-        if (!isLoggedIn()) {
-            switchToTab('login');
-        } else {
-            switchToTab('home');
-            renderFeed();
-            loadProfileBanner();
-            loadFollowData();
-            renderProfileAvatar();
-            renderRightSidebar();
+
+    var dbPromise = typeof dbInit === 'function' ? dbInit() : Promise.resolve();
+    dbPromise.then(function() {
+        if (feedPosts.length === 0) {
+            loadSampleData();
         }
-    }, 500);
-    
-    // Load sample data if empty
-    if (feedPosts.length === 0) {
-        loadSampleData();
-    }
+        if (typeof dbRefreshStatusUI === 'function') {
+            dbRefreshStatusUI();
+        }
+    }).catch(function() {
+        if (feedPosts.length === 0) {
+            loadSampleData();
+        }
+        if (typeof dbRefreshStatusUI === 'function') {
+            dbRefreshStatusUI();
+        }
+    }).then(function() {
+        setTimeout(function() {
+            if (!isLoggedIn()) {
+                switchToTab('login');
+            } else {
+                switchToTab('home');
+                renderFeed();
+                loadProfileBanner();
+                loadFollowData();
+                renderProfileAvatar();
+                renderRightSidebar();
+            }
+        }, 500);
+    });
 });
 
 // ===== TAB SWITCHING =====
@@ -156,7 +174,7 @@ function renderFeed() {
         });
     } else {
         sorted.sort(function(a, b) {
-            return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+            return new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0);
         });
     }
     
@@ -169,7 +187,7 @@ function renderFeed() {
         html += '<div class="content-box" style="margin-bottom: 16px;">' +
             '<div style="display: flex; justify-content: space-between; align-items: start;">' +
             '<div><strong>' + escapeFunc(post.author) + '</strong><br>' +
-            '<small style="color: #666;">' + new Date(post.timestamp).toLocaleString('id-ID') + '</small></div>';
+            '<small style="color: #666;">' + new Date(post.timestamp || post.createdAt || Date.now()).toLocaleString('id-ID') + '</small></div>';
         
         if (isOwn) {
             var jsStringFunc = typeof jsString === 'function' ? jsString : function(s) { return String(s).replace(/'/g, "\\'"); };
@@ -183,7 +201,7 @@ function renderFeed() {
             '<div style="margin: 8px 0; white-space: pre-wrap;">' + escapeFunc(post.content) + '</div>';
         
         if (post.image) {
-            html += '<img src="' + post.image + '" style="max-width: 100%; max-height: 300px; border-radius: 4px; margin-bottom: 8px;">';
+            html += '<img src="' + escapeFunc(post.image) + '" style="max-width: 100%; max-height: 300px; border-radius: 4px; margin-bottom: 8px;">';
         }
         
         html += '<div style="display: flex; gap: 12px; padding-top: 8px; border-top: 1px solid #eee; font-size: 12px; color: #666;">' +
@@ -233,9 +251,9 @@ function submitPost() {
     removePostImage();
     postImages.current = null;
     
-    // Sync to database
-    if (typeof sbInsert === 'function') {
-        sbInsert('feed_posts', post);
+    // Sync ke Supabase (format kolom sama dengan db.js)
+    if (typeof sbUpsert === 'function' && typeof postToDbRow === 'function') {
+        sbUpsert('feed_posts', postToDbRow(post), 'id');
     }
     
     showToast('Postingan berhasil dibagikan!');
@@ -248,6 +266,9 @@ function likePost(postId) {
     
     post.likes = (post.likes || 0) + 1;
     saveFeedPosts();
+    if (typeof dbSyncPost === 'function') {
+        dbSyncPost(post, false);
+    }
     renderFeed();
 }
 
@@ -280,7 +301,7 @@ function renderMyPosts() {
         var post = myPosts[i];
         html += '<div class="content-box" style="margin-bottom: 12px;">' +
             '<div>' + escapeHtml(post.content.substring(0, 100)) + (post.content.length > 100 ? '...' : '') + '</div>' +
-            '<div style="font-size: 12px; color: #666; margin-top: 8px;">' + new Date(post.timestamp).toLocaleString('id-ID') + '</div>' +
+            '<div style="font-size: 12px; color: #666; margin-top: 8px;">' + new Date(post.timestamp || post.createdAt || Date.now()).toLocaleString('id-ID') + '</div>' +
             '</div>';
     }
     
@@ -378,7 +399,7 @@ function addCommunity() {
     };
     
     communityList.push(community);
-    localStorage.setItem('yaping_communities', JSON.stringify(communityList));
+    saveCommunities();
     
     if (name) name.value = '';
     if (desc) desc.value = '';
@@ -747,6 +768,22 @@ function saveFeedPosts() {
     localStorage.setItem('yaping_feedposts', JSON.stringify(feedPosts));
 }
 
+function saveCommunities() {
+    try {
+        localStorage.setItem('yaping_communities', JSON.stringify(communityList));
+    } catch (e) {
+        console.warn('[Yaping] saveCommunities:', e);
+    }
+}
+
+function saveCommunityPosts() {
+    try {
+        localStorage.setItem('yaping_community_posts', JSON.stringify(communityPosts));
+    } catch (e) {
+        console.warn('[Yaping] saveCommunityPosts:', e);
+    }
+}
+
 function loadLocalData() {
     var stored = localStorage.getItem('yaping_feedposts');
     if (stored) {
@@ -761,8 +798,19 @@ function loadLocalData() {
     if (commStored) {
         try {
             communityList = JSON.parse(commStored);
+            communities = communityList;
         } catch (e) {
             communityList = [];
+            communities = communityList;
+        }
+    }
+
+    var cpStored = localStorage.getItem('yaping_community_posts');
+    if (cpStored) {
+        try {
+            communityPosts = JSON.parse(cpStored);
+        } catch (e2) {
+            communityPosts = {};
         }
     }
     
@@ -817,7 +865,7 @@ function loadSampleData() {
     ];
     
     saveFeedPosts();
-    localStorage.setItem('yaping_communities', JSON.stringify(communityList));
+    saveCommunities();
 }
 
 function logActivity(action, type, targetId, description) {
@@ -846,25 +894,7 @@ function renderRightSidebar() {
 }
 
 // ===== DATABASE SYNC =====
-async function dbPushLocalPosts() {
-    if (typeof sbUpsert !== 'function') {
-        showToast('Database belum siap');
-        return false;
-    }
-    
-    try {
-        for (var i = 0; i < feedPosts.length; i++) {
-            var post = feedPosts[i];
-            await sbUpsert('feed_posts', post, 'id');
-        }
-        showToast('✅ Semua postingan berhasil disync');
-        return true;
-    } catch (e) {
-        console.error('[DB] Push local posts error:', e);
-        showToast('❌ Gagal sync postingan');
-        return false;
-    }
-}
+// dbPushLocalPosts didefinisikan di db.js (Supabase) — jangan duplikat di sini.
 
 async function dbPullRemotePosts() {
     if (typeof sbGet !== 'function') {
@@ -875,15 +905,27 @@ async function dbPullRemotePosts() {
     try {
         var posts = await sbGet('feed_posts', 'order=created_at.desc&limit=100');
         if (Array.isArray(posts) && posts.length > 0) {
-            // Merge with existing posts
             for (var i = 0; i < posts.length; i++) {
-                var dbPost = posts[i];
-                var idx = findPostIndexById(feedPosts, dbPost.id);
+                var row = posts[i];
+                var merged = typeof dbRowToPost === 'function' ? dbRowToPost(row) : null;
+                if (!merged) continue;
+                var idx = findPostIndexById(feedPosts, merged.id);
                 if (idx === -1) {
-                    feedPosts.push(dbPost);
+                    feedPosts.push(merged);
+                } else {
+                    feedPosts[idx].likes = merged.likes;
+                    feedPosts[idx].likedBy = merged.likedBy;
+                    feedPosts[idx].comments = merged.comments;
+                    feedPosts[idx].timestamp = merged.timestamp || feedPosts[idx].timestamp;
+                    feedPosts[idx].image = merged.image != null ? merged.image : feedPosts[idx].image;
                 }
             }
+            feedPosts.sort(function(a, b) {
+                return new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0);
+            });
             saveFeedPosts();
+            if (typeof renderFeed === 'function') renderFeed();
+            if (typeof renderMyPosts === 'function') renderMyPosts();
         }
         return true;
     } catch (e) {
