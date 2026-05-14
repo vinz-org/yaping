@@ -2411,6 +2411,18 @@ function doSearch() {
 // Developer release notes/changelog
 var YAPING_RELEASES = [
     {
+        version: 'v1.2.0',
+        date: 'May 10, 2026',
+        title: '✨ Fitur Baru & Bug Fixes',
+        features: [
+            '✨ [Baru] Banner profil untuk profil pengguna',
+            '✨ [Baru] sebaga siapa yang mengikuti aku ?',
+            '✨ [Baru] penjumlah / penghitung followers ?',
+            '⚡ [Hapus] Beberapa Bug yang ada di app',
+            '🚮 [Hapus] P2p status di sidebar Dihapus',
+        ]
+    },
+    {
         version: 'v1.1.0',
         date: 'May 10, 2026',
         title: '✨ Fitur Baru & Bug Fixes',
