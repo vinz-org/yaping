@@ -455,18 +455,18 @@
 <!-- TOAST NOTIFICATION -->
 <div id="toast" class="hidden"></div>
 
+<!-- Followers/Following Modal -->
+<div id="followers-modal" class="tab-content hidden" style="max-width: 500px; margin: 20px auto;">
+    <div class="content-box">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 id="followers-modal-title" style="margin: 0;">Pengikut</h3>
+            <button onclick="closeFollowersModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
+        </div>
+        <div id="followers-list" style="max-height: 400px; overflow-y: auto;"></div>
+    </div>
+</div>
+
 <script src="script.js"></script>
 <script src="db-patch.js"></script>
 </body>
 </html>
-
-        <!-- Followers/Following Modal -->
-        <div id="followers-modal" class="tab-content hidden" style="max-width: 500px; margin: 20px auto;">
-            <div class="content-box">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 id="followers-modal-title" style="margin: 0;">Pengikut</h3>
-                    <button onclick="closeFollowersModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">✕</button>
-                </div>
-                <div id="followers-list" style="max-height: 400px; overflow-y: auto;"></div>
-            </div>
-        </div>
