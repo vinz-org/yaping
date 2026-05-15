@@ -143,15 +143,17 @@ function installAuthEmailFields() {
 async function handleLogin() {
     var emailInput = document.getElementById('login-email');
     var passwordInput = document.getElementById('login-password');
+    var rememberInput = document.getElementById('login-remember');
     var email = getAuthInputEmail(emailInput ? emailInput.value : '');
     var password = passwordInput ? passwordInput.value : '';
+    var rememberMe = rememberInput ? rememberInput.checked : false;
 
     if (!email || !password) {
         showToast('Email dan password harus diisi');
         return;
     }
 
-    var result = await signIn(email, password);
+    var result = await signIn(email, password, rememberMe);
     if (result.success) {
         localStorage.removeItem('yaping_pendingEmail');
         showToast('Login berhasil!');
@@ -200,7 +202,7 @@ async function handleSignup() {
         return;
     }
 
-    var result = await signUp(username, email, password);
+    var result = await signUp(username, email, password, false);
     if (result.success) {
         if (result.needsLogin) {
             showToast('Daftar berhasil! Cek email jika diminta, lalu login.');

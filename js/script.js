@@ -134,20 +134,24 @@ function sanitizeMediaSrc(src, type) {
     return value;
 }
 
-function renderMediaSecure(src, type) {
+function renderMediaSecure(src, type, isBlurred) {
     var safeSrc = sanitizeMediaSrc(src, type);
     if (!safeSrc) return '';
     var escapedSrc = escapeAttr(safeSrc);
-    if (type === 'image') return '<div class="post-image"><img src="' + escapedSrc + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;" onerror="this.style.display=\'none\'"></div>';
-    if (type === 'audio') return '<div class="post-media"><audio controls style="width:100%;max-width:300px;margin:8px 0;"><source src="' + escapedSrc + '" type="audio/mpeg"></audio></div>';
-    if (type === 'video') return '<div class="post-media"><video controls style="width:100%;max-width:300px;margin:8px 0;"><source src="' + escapedSrc + '" type="video/mp4"></video></div>';
+    var blurStyle = isBlurred ? 'filter: blur(15px); cursor: pointer; transition: filter 0.3s;' : '';
+    var blurAttr = isBlurred ? ' onclick="this.style.filter=\'none\'" title="Klik untuk hilangkan blur"' : '';
+
+    if (type === 'image') return '<div class="post-image"><img src="' + escapedSrc + '" alt="post image" style="max-width:100%;border-radius:3px;margin:8px 0;' + blurStyle + '"' + blurAttr + ' onerror="this.style.display=\'none\'"></div>';
+    if (type === 'audio') return '<div class="post-media"><audio controls style="width:100%;max-width:300px;margin:8px 0;' + blurStyle + '"' + blurAttr + '><source src="' + escapedSrc + '" type="audio/mpeg"></audio></div>';
+    if (type === 'video') return '<div class="post-media"><video controls style="width:100%;max-width:300px;margin:8px 0;' + blurStyle + '"' + blurAttr + '><source src="' + escapedSrc + '" type="video/mp4"></video></div>';
     return '';
 }
 
 function renderPostMedia(post) {
     if (!post) return '';
-    if (post.media) return renderMediaSecure(post.media, post.mediaType);
-    if (post.photo) return renderMediaSecure(post.photo, 'image');
+    var isBlurred = !!post.isBlurred;
+    if (post.media) return renderMediaSecure(post.media, post.mediaType, isBlurred);
+    if (post.photo) return renderMediaSecure(post.photo, 'image', isBlurred);
     return '';
 }
 
@@ -669,6 +673,7 @@ function normalizePost(raw, scope, communityId) {
         photo: raw.photo || null,
         media: raw.media || null,
         mediaType: raw.mediaType || null,
+        isBlurred: !!raw.isBlurred,
         originPeerId: raw.originPeerId || raw.fromPeerId || null,
         scope: scope || raw.scope || 'feed',
         comments: []
@@ -1902,7 +1907,7 @@ function viewCommunity(commId) {
     var memberCount = safeCount(comm.members);
     var postBoxHTML = '';
     if (isMember) {
-        postBoxHTML = '<div class="content-box"><div class="box-title">💬 Buat Postingan</div><textarea id="communityPostInput" class="comm-post-input" placeholder="Tulis sesuatu untuk ' + escapeAttr(comm.name) + '..."></textarea><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="option-btn" onclick="addEmoji(\'communityPostInput\')" style="font-size:11px;">😊 Emoji</button><button class="option-btn" onclick="triggerMediaUploadCommunity()" style="font-size:11px;">📹 Media</button><input type="file" id="communityMediaUpload" accept=".mp3,.mp4,image/*" style="display:none;" onchange="handleMediaUpload(event)"><button class="primary-btn" onclick="submitCommunityPost(' + commId + ')">Bagikan</button></div><div id="community-post-preview-img" style="display:none;margin-top:10px;"><img id="community-post-img-preview" src="" alt="preview" style="max-width:300px;"></div></div>';
+        postBoxHTML = '<div class="content-box"><div class="box-title">💬 Buat Postingan</div><textarea id="communityPostInput" class="comm-post-input" placeholder="Tulis sesuatu untuk ' + escapeAttr(comm.name) + '..."></textarea><div class="form-row form-row-inline" style="margin-bottom: 8px;"><label class="toggle-switch"><input type="checkbox" id="community-post-blur-toggle" title="Blur Media"><span class="slider"></span></label><span style="font-size: 12px; color: var(--fb-text-light);">Blur Media (Sensor)</span></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="option-btn" onclick="addEmoji(\'communityPostInput\')" style="font-size:11px;">😊 Emoji</button><button class="option-btn" onclick="triggerMediaUploadCommunity()" style="font-size:11px;">📹 Media</button><input type="file" id="communityMediaUpload" accept=".mp3,.mp4,image/*" style="display:none;" onchange="handleMediaUpload(event)"><button class="primary-btn" onclick="submitCommunityPost(' + commId + ')">Bagikan</button></div><div id="community-post-preview-img" style="display:none;margin-top:10px;"><img id="community-post-img-preview" src="" alt="preview" style="max-width:300px;"></div></div>';
     } else {
         postBoxHTML = '<div class="content-box" style="text-align:center;padding:20px;"><div style="font-size:36px;margin-bottom:10px;">🔒</div><p style="margin-bottom:12px;font-size:12px;">Gabung untuk bisa posting & berdiskusi</p><button class="primary-btn" onclick="joinCommunity(' + commId + ')">👥 Gabung Sekarang</button></div>';
     }
@@ -1919,6 +1924,8 @@ function viewCommunity(commId) {
 async function submitCommunityPost(commId) {
     if (await enforceSecurityBan()) return;
     var input = document.getElementById('communityPostInput');
+    var blurToggle = document.getElementById('community-post-blur-toggle');
+    var isBlurred = blurToggle ? blurToggle.checked : false;
     var text = input ? input.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis sesuatu dulu ya!'); if (input) input.focus(); return; }
     var wordCount = countWords(text);
@@ -1927,10 +1934,10 @@ async function submitCommunityPost(commId) {
     var comm = null;
     for (var i = 0; i < communities.length; i++) { if (communities[i].id === commId) { comm = communities[i]; break; } }
     if (!comm) return;
-    var newPost = { id: createLocalId('comm'), communityId: commId, author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, originPeerId: peerId || localClientId, scope: 'community' };
+    var newPost = { id: createLocalId('comm'), communityId: commId, author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, isBlurred: isBlurred, originPeerId: peerId || localClientId, scope: 'community' };
     upsertCommunityPost(commId, newPost, true);
-    if (input) input.value = ''; postMedia = null; postMediaType = null;
-    var preview = document.getElementById('post-preview-img'); if (preview) preview.style.display = 'none';
+    if (input) input.value = ''; if (blurToggle) blurToggle.checked = false; postMedia = null; postMediaType = null;
+    var preview = document.getElementById('community-post-preview-img'); if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan ke ' + comm.name);
     broadcastPeerMessage({ type: 'community-post', communityId: commId, post: newPost, communities: [comm] });
     if (comm.owner !== currentUser) addNotification(currentUser + ' memposting di ' + comm.name, 'comm');
@@ -2044,14 +2051,16 @@ function deleteCommunity(commId) {
 async function submitPost() {
     if (await enforceSecurityBan()) return;
     var input = document.getElementById('postInput');
+    var blurToggle = document.getElementById('post-blur-toggle');
+    var isBlurred = blurToggle ? blurToggle.checked : false;
     var text = input ? input.value.trim() : '';
     if (!text) { showToast('⚠️ Tulis sesuatu dulu ya!'); if (input) input.focus(); return; }
     var wordCount = countWords(text);
     if (wordCount > 1000) { showToast('❌ Jumlah kata terlalu banyak! Max 1000 kata. Anda menulis: ' + wordCount + ' kata'); return; }
     if (hasXSSAttempt(text)) { if (input) input.value = ''; triggerSecurityBan('feed-post-xss-attempt'); return; }
-    var newPost = { id: createLocalId('feed'), author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, originPeerId: peerId || localClientId, scope: 'feed' };
+    var newPost = { id: createLocalId('feed'), author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, isBlurred: isBlurred, originPeerId: peerId || localClientId, scope: 'feed' };
     upsertFeedPost(newPost, true);
-    if (input) input.value = ''; postMedia = null; postMediaType = null;
+    if (input) input.value = ''; if (blurToggle) blurToggle.checked = false; postMedia = null; postMediaType = null;
     var preview = document.getElementById('post-preview-img'); if (preview) preview.style.display = 'none';
     showToast('✅ Postingan dibagikan! 🎉');
     if (typeof logActivity === 'function') logActivity('create_post', 'post', newPost.id, text.substring(0, 50));
@@ -2203,6 +2212,12 @@ function saveProfile() {
     var elUser = document.getElementById('edit-username');
     var elName = document.getElementById('edit-fullname');
     var elBio = document.getElementById('edit-bio');
+
+    // Save to localStorage immediately as requested
+    if (currentUserPhoto) localStorage.setItem('yaping_currentUserPhoto', currentUserPhoto);
+    if (currentProfileBanner) localStorage.setItem('yaping_profileBanner', currentProfileBanner);
+    else localStorage.removeItem('yaping_profileBanner');
+
     var prevUser = currentUser;
     var newUsername = elUser ? (elUser.value.trim() || currentUser) : currentUser;
     if (newUsername !== currentUser) {

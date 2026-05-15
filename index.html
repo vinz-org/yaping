@@ -87,6 +87,13 @@
                     <img id="post-img-preview" src="" alt="preview">
                     <button class="close-img-btn" onclick="removePostImage()">✕</button>
                 </div>
+                <div class="form-row form-row-inline" style="margin-top: 8px;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="post-blur-toggle" title="Blur Media">
+                        <span class="slider"></span>
+                    </label>
+                    <span style="font-size: 12px; color: var(--fb-text-light);">Blur Media (Sensor)</span>
+                </div>
                 <div class="create-post-footer">
                     <div class="post-options">
                         <button class="option-btn" onclick="addEmoji()">😊 Emoji</button>
@@ -386,6 +393,10 @@
                 <div class="form-row">
                     <label>Password</label>
                     <input type="password" id="login-password" placeholder="Password">
+                </div>
+                <div class="form-row form-row-inline">
+                    <input type="checkbox" id="login-remember" style="width: auto;">
+                    <label for="login-remember">Ingat Saya</label>
                 </div>
                 <div class="form-actions" style="flex-direction: column; gap: 8px;">
                     <button class="primary-btn" onclick="handleLogin()" style="width: 100%;">Masuk</button>
