@@ -600,7 +600,7 @@ function getBadgeHTML(username) {
     var plain = username.startsWith('@') ? username.substring(1) : username;
     
     if (badgedUsers.has(normalized) || badgedUsers.has(plain)) {
-        return '<img src="assets/badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
+        return '<img src="badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
     }
     
     return '';
