@@ -455,23 +455,30 @@ function purgeLikeSpikePostsFromStorage() {
     if (changedCommunity && typeof saveCommunityPosts === 'function') saveCommunityPosts();
 }
 
-function showSecurityBanScreen() {
+function showSecurityBanScreen(manualBanData) {
     if (!document.body) return;
-    var banData = getSecurityBanData() || {};
+    var banData = manualBanData || getSecurityBanData() || {};
     var expiresAt = parseInt(banData.expiresAt, 10) || getSecurityBanExpiry(banData.createdAt);
     var expiresDate = new Date(expiresAt);
+    var banMessage = banData.reason || getSecurityBanMessage(banData);
+
     document.body.innerHTML =
         '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f2f5;font-family:Tahoma,Arial,sans-serif;padding:20px;">' +
             '<div style="width:min(520px,100%);background:white;border:1px solid #d8dfea;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.12);padding:22px;text-align:center;">' +
                 '<div style="font-size:42px;margin-bottom:10px;">🚫✋</div>' +
                 '<h1 style="font-size:20px;color:#b00020;margin:0 0 10px;">Akun Diblokir</h1>' +
-                '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(getSecurityBanMessage(banData)) + '</p>' +
+                '<p style="font-size:13px;line-height:1.5;color:#333;margin:0 0 12px;">' + escapeHtml(banMessage) + '</p>' +
                 '<div id="security-ban-timer" style="font-size:13px;font-weight:bold;color:#b00020;margin-bottom:8px;"></div>' +
-                '<div style="font-size:12px;color:#555;margin-bottom:12px;">Ban berakhir: ' + escapeHtml(expiresDate.toLocaleString('id-ID')) + '</div>' +
+                '<div style="font-size:12px;color:#555;margin-bottom:12px;">Ban berakhir: ' + (banData.isPermanent ? 'PERMANEN' : escapeHtml(expiresDate.toLocaleString('id-ID'))) + '</div>' +
                 '<div style="font-size:11px;color:#777;border-top:1px solid #edf0f5;padding-top:10px;">ID blokir: ' + escapeHtml(banData.clientId || 'local-browser') + '<span id="security-network-info">' + escapeHtml(getSecurityNetworkText(banData)) + '</span></div>' +
             '</div>' +
         '</div>';
-    startSecurityBanCountdown(expiresAt);
+
+    if (!banData.isPermanent) startSecurityBanCountdown(expiresAt);
+    else {
+        var timerEl = document.getElementById('security-ban-timer');
+        if (timerEl) timerEl.textContent = 'Status: Blokir Permanen';
+    }
     fetchSecurityNetworkInfo();
     if (typeof dbSetServerBan === 'function') {
         dbSetServerBan(
@@ -510,8 +517,14 @@ function startSecurityBanCountdown(expiresAt) {
 }
 
 async function enforceSecurityBan() {
-    if (isSecurityBanned()) {
-        showSecurityBanScreen();
+    var localBan = getSecurityBanData();
+    if (localBan && isSecurityBanned()) {
+        showSecurityBanScreen(localBan);
+        return true;
+    }
+    var accountBans = getAccountBans();
+    if (accountBans[currentUser]) {
+        showSecurityBanScreen(accountBans[currentUser]);
         return true;
     }
     if (typeof dbCheckServerBan === 'function') {
@@ -586,11 +599,15 @@ function loadBadgeList() {
     badgedUsers.clear();
     var list = (typeof YAPING_BADGE_USERS !== 'undefined') ? YAPING_BADGE_USERS : [];
     for (var i = 0; i < list.length; i++) {
-        var u = list[i].trim();
-        if (u) badgedUsers.add(u);
+        var u = list[i].trim().toLowerCase();
+        if (u) {
+            badgedUsers.add(u);
+            if (u.startsWith('@')) badgedUsers.add(u.substring(1));
+            else badgedUsers.add('@' + u);
+        }
     }
     if (badgedUsers.size > 0) {
-        console.log('[Badge] Dimuat untuk: ' + Array.from(badgedUsers).join(', '));
+        console.log('[Badge] Dimuat (P2P + DB compatible).');
     }
 }
 
@@ -641,6 +658,7 @@ function switchToTab(tabName) {
 
     if (tabName === 'komunitas') renderCommunities('all');
     else if (tabName === 'profile') { updateProfileStats(); renderMyPosts(); renderProfileBanner(); }
+    else if (tabName === 'admin') renderAdminPanel();
     else if (tabName === 'home') renderFeed();
     else if (tabName === 'search') renderSearchTab();
     else if (tabName === 'hashtags') renderHashtags();
@@ -2151,9 +2169,32 @@ function renderMyPosts() {
 function updateProfileStats() {
     var el;
     var adminGroup = document.getElementById('admin-settings-group');
+    var adminSidebarLink = document.getElementById('sidebar-admin-link');
+    var isAdmin = badgedUsers.has(currentUser);
+
     if (adminGroup) {
-        if (badgedUsers.has(currentUser)) adminGroup.classList.remove('hidden');
+        if (isAdmin) adminGroup.classList.remove('hidden');
         else adminGroup.classList.add('hidden');
+    }
+    var adminStatsRow = document.getElementById('sidebar-admin-stats');
+    if (adminSidebarLink) {
+        if (isAdmin) {
+            adminSidebarLink.classList.remove('hidden');
+            adminSidebarLink.style.display = 'block';
+            if (adminStatsRow) {
+                adminStatsRow.classList.remove('hidden');
+                adminStatsRow.style.display = 'flex';
+                adminStatsRow.style.justifyContent = 'space-between';
+                updateSidebarStats();
+            }
+        } else {
+            adminSidebarLink.classList.add('hidden');
+            adminSidebarLink.style.display = 'none';
+            if (adminStatsRow) {
+                adminStatsRow.classList.add('hidden');
+                adminStatsRow.style.display = 'none';
+            }
+        }
     }
     el = document.getElementById('pi-followers'); if (el) el.textContent = getFollowerCountForUser(currentUser);
     el = document.getElementById('pi-following'); if (el) el.textContent = following.size;
@@ -2296,19 +2337,26 @@ function showNotifications() {
 }
 
 async function adminActionBan() {
-    if (!badgedUsers.has(currentUser)) return;
-    var input = document.getElementById('admin-ban-username');
+    if (!badgedUsers.has(currentUser)) {
+        showToast('⚠️ Hanya admin yang bisa melakukan ban.');
+        return;
+    }
+    var input = document.getElementById('admin-ban-username') || document.getElementById('admin-panel-ban-username');
     var username = input ? input.value.trim() : '';
     if (!username) { showToast('⚠️ Masukkan username!'); return; }
     if (username === currentUser) { showToast('⚠️ Tidak bisa ban diri sendiri!'); return; }
     if (badgedUsers.has(username)) { showToast('⚠️ Tidak bisa ban admin lain!'); return; }
     banUserByBadge(username);
     if (input) input.value = '';
+    if (currentViewedCommunity === null && document.getElementById('admin-tab').classList.contains('hidden') === false) renderAdminPanel();
 }
 
 async function adminActionUnban() {
-    if (!badgedUsers.has(currentUser)) return;
-    var input = document.getElementById('admin-unban-username');
+    if (!badgedUsers.has(currentUser)) {
+        showToast('⚠️ Hanya admin yang bisa melakukan unban.');
+        return;
+    }
+    var input = document.getElementById('admin-unban-username') || document.getElementById('admin-panel-unban-username');
     var username = input ? input.value.trim() : '';
     if (!username) { showToast('⚠️ Masukkan username!'); return; }
     if (!confirm('Unban akun ' + username + '?')) return;
@@ -2320,6 +2368,59 @@ async function adminActionUnban() {
         else { showToast('❌ Gagal menghapus ban di database.'); }
     } else { showToast('✅ Akun ' + username + ' berhasil di-unban (lokal)!'); }
     if (input) input.value = '';
+    if (currentViewedCommunity === null && document.getElementById('admin-tab').classList.contains('hidden') === false) renderAdminPanel();
+}
+
+function updateSidebarStats() {
+    var onlineCount = getOpenConnectionCount() + (peerReady ? 1 : 0);
+    var knownCount = knownPeerIds.length;
+    var offlineCount = Math.max(0, knownCount - onlineCount + 1);
+
+    var onlineEl = document.getElementById('sidebar-online-count');
+    var offlineEl = document.getElementById('sidebar-offline-count');
+    if (onlineEl) onlineEl.textContent = onlineCount;
+    if (offlineEl) offlineEl.textContent = offlineCount;
+}
+
+function renderAdminPanel() {
+    if (!badgedUsers.has(currentUser)) { switchToTab('home'); return; }
+    updateSidebarStats();
+
+    // Update Stats
+    var onlineCount = getOpenConnectionCount() + (peerReady ? 1 : 0);
+    var knownCount = knownPeerIds.length;
+    var offlineCount = Math.max(0, knownCount - onlineCount + 1);
+
+    var onlineEl = document.getElementById('admin-stats-online');
+    var offlineEl = document.getElementById('admin-stats-offline');
+    if (onlineEl) onlineEl.textContent = onlineCount;
+    if (offlineEl) offlineEl.textContent = offlineCount;
+
+    // Update Ban List
+    var banListEl = document.getElementById('admin-ban-list');
+    if (banListEl) {
+        var bans = getAccountBans();
+        var usernames = Object.keys(bans);
+        if (usernames.length === 0) {
+            banListEl.innerHTML = 'Tidak ada user yang diblokir saat ini.';
+        } else {
+            var html = '<table style="width:100%; border-collapse:collapse; margin-top:10px;">';
+            html += '<tr style="background:#f0f2f5; font-weight:bold;"><td style="padding:5px; border:1px solid #ddd;">User</td><td style="padding:5px; border:1px solid #ddd;">Alasan</td><td style="padding:5px; border:1px solid #ddd;">Berakhir</td><td style="padding:5px; border:1px solid #ddd;">Aksi</td></tr>';
+            for (var i = 0; i < usernames.length; i++) {
+                var u = usernames[i];
+                var b = bans[u];
+                var expiry = b.isPermanent ? 'PERMANEN' : new Date(b.expiresAt).toLocaleDateString();
+                html += '<tr>';
+                html += '<td style="padding:5px; border:1px solid #ddd;">' + escapeHtml(u) + '</td>';
+                html += '<td style="padding:5px; border:1px solid #ddd;">' + escapeHtml(b.reason) + '</td>';
+                html += '<td style="padding:5px; border:1px solid #ddd;">' + expiry + '</td>';
+                html += '<td style="padding:5px; border:1px solid #ddd;"><button class="danger-btn" style="padding:2px 5px; font-size:10px;" onclick="document.getElementById(\'admin-panel-unban-username\').value=\'' + jsString(u) + '\'; adminActionUnban();">Unban</button></td>';
+                html += '</tr>';
+            }
+            html += '</table>';
+            banListEl.innerHTML = html;
+        }
+    }
 }
 
 function addNotification(text, type) {
@@ -2549,12 +2650,18 @@ window.findPostIndexById = findPostIndexById;
 
 // ===== INISIALISASI UTAMA =====
 document.addEventListener('DOMContentLoaded', async function() {
+    // 0. Load badge list
+    loadBadgeList();
+
     // 1. Init state dari localStorage
     initState();
     renderProfileBanner();
 
     // 2. Cek security ban
     if (await enforceSecurityBan()) return;
+
+    // 2.5 Update stats (badge status)
+    updateProfileStats();
 
     // 3. Cek apakah user sudah login
     var storedUser = localStorage.getItem('yaping_currentUser');
@@ -2604,7 +2711,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (editUsernameInput) editUsernameInput.maxLength = USERNAME_MAX_LENGTH;
 
     initializePeer();
-    loadBadgeList();
 
     var searchInput = document.getElementById('searchInput');
     if (searchInput) {
