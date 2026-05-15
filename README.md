@@ -1,6 +1,6 @@
-# Yaping 
+## Yaping 
   
- Yaping adalah platform jejaring sosial berbasis web (gaya Facebook 2008) yang dibuat dengan HTML, CSS, dan JavaScript murni — tanpa framework, tanpa build step. Backend menggunakan **Supabase** untuk database, autentikasi, dan realtime. 
+Yaping adalah platform jejaring sosial berbasis web (gaya Facebook 2008) yang dibuat dengan HTML, CSS, dan JavaScript murni — tanpa framework, tanpa build step. Backend menggunakan **Supabase** untuk database, autentikasi, dan realtime. 
   
  --- 
   
