@@ -221,7 +221,7 @@ async function ensureUserProfile(user, username, accessToken) {
     }
 }
 
-function persistAuthSession(user, accessToken, refreshToken, expiresAt, username, email, profile) {
+function persistAuthSession(user, accessToken, refreshToken, expiresAt, username, email, profile, rememberMe) {
     var safeEmail = normalizeAuthEmail(email || (user && user.email));
     var safeUsername = normalizeAuthUsername(username || (profile && profile.username) || (user && user.user_metadata && user.user_metadata.username) || (safeEmail ? safeEmail.split('@')[0] : 'user'));
     var safeUser = {
@@ -238,7 +238,8 @@ function persistAuthSession(user, accessToken, refreshToken, expiresAt, username
     currentEmail = safeEmail;
     authInitialized = true;
 
-    localStorage.setItem('yaping_auth', JSON.stringify({
+    var storage = rememberMe ? localStorage : sessionStorage;
+    var authData = {
         method: AUTH_METHOD,
         user: safeUser,
         username: currentUsername,
@@ -247,15 +248,34 @@ function persistAuthSession(user, accessToken, refreshToken, expiresAt, username
         refreshToken: authRefreshToken,
         expiresAt: authExpiresAt,
         profile: profile || null,
-        timestamp: Date.now()
-    }));
+        timestamp: Date.now(),
+        rememberMe: !!rememberMe
+    };
+
+    storage.setItem('yaping_auth', JSON.stringify(authData));
     localStorage.setItem('yaping_currentUser', currentUsername);
     if (currentEmail) localStorage.setItem('yaping_currentEmail', currentEmail);
 
     if (profile) {
         if (profile.full_name) localStorage.setItem('yaping_currentFullname', profile.full_name);
+        else localStorage.removeItem('yaping_currentFullname');
+
         if (typeof profile.bio === 'string') localStorage.setItem('yaping_currentBio', profile.bio);
+        else localStorage.removeItem('yaping_currentBio');
+
         if (profile.avatar_url) localStorage.setItem('yaping_currentUserPhoto', profile.avatar_url);
+        else localStorage.removeItem('yaping_currentUserPhoto');
+
+        // Handle banner if it exists in profile (might need schema update, but for now let's be safe)
+        if (profile.banner_url) localStorage.setItem('yaping_profileBanner', profile.banner_url);
+        else localStorage.removeItem('yaping_profileBanner');
+    }
+
+    // Clean up other storage to avoid conflicts
+    if (rememberMe) {
+        sessionStorage.removeItem('yaping_auth');
+    } else {
+        localStorage.removeItem('yaping_auth');
     }
 }
 
@@ -267,9 +287,14 @@ function clearAuthSession() {
     currentUsername = null;
     currentEmail = null;
     localStorage.removeItem('yaping_auth');
+    sessionStorage.removeItem('yaping_auth');
     localStorage.removeItem('yaping_userProfile');
     localStorage.removeItem('yaping_currentUser');
     localStorage.removeItem('yaping_currentEmail');
+    localStorage.removeItem('yaping_currentUserPhoto');
+    localStorage.removeItem('yaping_profileBanner');
+    localStorage.removeItem('yaping_currentFullname');
+    localStorage.removeItem('yaping_currentBio');
 }
 
 async function refreshAuthSession(data) {
@@ -282,7 +307,7 @@ async function refreshAuthSession(data) {
 
         if (!payload.user.id || !payload.accessToken) return false;
         var profile = await ensureUserProfile(payload.user, data.username || payload.username, payload.accessToken);
-        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, payload.username || data.username, payload.email || data.email, profile);
+        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, payload.username || data.username, payload.email || data.email, profile, data.rememberMe);
         return true;
     } catch (e) {
         console.warn('[Auth] Refresh session failed:', e);
@@ -293,7 +318,7 @@ async function refreshAuthSession(data) {
 async function initAuth() {
     authInitialized = true;
 
-    var stored = localStorage.getItem('yaping_auth');
+    var stored = localStorage.getItem('yaping_auth') || sessionStorage.getItem('yaping_auth');
     if (!stored) {
         clearAuthSession();
         return;
@@ -328,7 +353,7 @@ async function initAuth() {
     }
 }
 
-async function signUp(username, email, password) {
+async function signUp(username, email, password, rememberMe) {
     try {
         username = normalizeAuthUsername(username);
         email = normalizeAuthEmail(email);
@@ -356,7 +381,7 @@ async function signUp(username, email, password) {
         }
 
         var profile = await ensureUserProfile(payload.user, username, payload.accessToken);
-        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, username, email, profile);
+        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, username, email, profile, rememberMe);
         return { success: true, user: authUser, profile: profile, needsLogin: false };
     } catch (e) {
         console.error('[Auth] Signup error:', e);
@@ -364,7 +389,7 @@ async function signUp(username, email, password) {
     }
 }
 
-async function signIn(email, password) {
+async function signIn(email, password, rememberMe) {
     try {
         email = normalizeAuthEmail(email);
 
@@ -382,7 +407,7 @@ async function signIn(email, password) {
         }
 
         var profile = await ensureUserProfile(payload.user, payload.username, payload.accessToken);
-        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, (profile && profile.username) || payload.username, email, profile);
+        persistAuthSession(payload.user, payload.accessToken, payload.refreshToken, payload.expiresAt, (profile && profile.username) || payload.username, email, profile, rememberMe);
         return { success: true, user: authUser, profile: profile };
     } catch (e) {
         console.error('[Auth] Signin error:', e);

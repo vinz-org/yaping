@@ -738,6 +738,17 @@ body {
     gap: 4px;
 }
 
+.form-row-inline {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+.form-row-inline label {
+    margin-bottom: 0 !important;
+    font-weight: normal !important;
+}
+
 .form-row label {
     font-size: 12px;
     font-weight: bold;
@@ -1096,19 +1107,21 @@ body {
 }
 
 /* Toggle Switch */
-.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
 .slider {
     position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     background: #ccc; border-radius: 20px; cursor: pointer;
     transition: 0.3s;
+    border: 1px solid #999;
 }
 .slider:before {
     content: ""; position: absolute;
-    width: 14px; height: 14px; left: 3px; bottom: 3px;
+    width: 12px; height: 12px; left: 3px; bottom: 3px;
     background: white; border-radius: 50%; transition: 0.3s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
-input:checked + .slider { background: var(--fb-blue); }
+input:checked + .slider { background: var(--fb-blue); border-color: var(--fb-blue-dark); }
 input:checked + .slider:before { transform: translateX(16px); }
 
 /* ========== ADS BOX ========== */
