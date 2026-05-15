@@ -62,6 +62,11 @@
                 <li><a href="#" onclick="switchToTab('komunitas'); return false;">👥 Komunitas</a></li>
                 <li><a href="#" onclick="switchToTab('updates'); return false;">📰 Updates</a></li>
                 <li><a href="#" onclick="switchToTab('profile'); return false;">👤 Profil Saya</a></li>
+                <li id="sidebar-admin-link" class="hidden"><a href="#" onclick="switchToTab('admin'); return false;">🛡️ Admin Panel</a></li>
+                <li id="sidebar-admin-stats" class="sidebar-stat hidden" style="padding: 5px 8px; border-bottom: 1px dotted var(--fb-border);">
+                    <span style="font-size: 11px;">P2P Online: <strong id="sidebar-online-count">0</strong></span>
+                    <span style="font-size: 11px;">Offline: <strong id="sidebar-offline-count">0</strong></span>
+                </li>
                 <li><a href="#" onclick="switchToTab('settings'); return false;">⚙️ Pengaturan</a></li>
             </ul>
         </div>
@@ -249,6 +254,53 @@
             <div class="content-box">
                 <div class="box-title">👥 Komunitas Populer</div>
                 <div id="popular-comms-sidebar"></div>
+            </div>
+        </div>
+
+        <!-- TAB: ADMIN PANEL -->
+        <div id="admin-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title" style="background: #b00020; color: white; padding: 5px 10px; border-radius: 3px 3px 0 0;">🛡️ Admin Panel - Akun Resmi</div>
+
+                <!-- Stats Section -->
+                <div class="settings-group">
+                    <div class="settings-label">Statistik Jaringan</div>
+                    <div class="settings-row">
+                        <span>User Online (P2P)</span>
+                        <strong id="admin-stats-online">0</strong>
+                    </div>
+                    <div class="settings-row">
+                        <span>User Offline / Diketahui</span>
+                        <strong id="admin-stats-offline">0</strong>
+                    </div>
+                </div>
+
+                <!-- Ban Actions -->
+                <div class="settings-group">
+                    <div class="settings-label">Manajemen Pengguna</div>
+                    <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <span>Ban User by Username</span>
+                        <div style="display:flex; gap:8px; width: 100%;">
+                            <input type="text" id="admin-panel-ban-username" placeholder="@username" style="flex: 1;">
+                            <button class="danger-btn" onclick="adminActionBan()">Ban</button>
+                        </div>
+                    </div>
+                    <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <span>Unban User Account</span>
+                        <div style="display:flex; gap:8px; width: 100%;">
+                            <input type="text" id="admin-panel-unban-username" placeholder="@username" style="flex: 1;">
+                            <button class="primary-btn" onclick="adminActionUnban()">Unban</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ban List -->
+                <div class="settings-group">
+                    <div class="settings-label">Daftar Blokir Saat Ini</div>
+                    <div id="admin-ban-list" style="padding: 10px; font-size: 11px; color: var(--fb-text-light);">
+                        Memuat daftar blokir...
+                    </div>
+                </div>
             </div>
         </div>
 
