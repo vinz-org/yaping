@@ -694,7 +694,11 @@ function normalizePost(raw, scope, communityId) {
         isBlurred: !!raw.isBlurred,
         originPeerId: raw.originPeerId || raw.fromPeerId || null,
         scope: scope || raw.scope || 'feed',
-        comments: []
+        comments: [],
+        authorPhoto: raw.authorPhoto || '',
+        authorBanner: raw.authorBanner || '',
+        authorFullname: raw.authorFullname || raw.author || '@teman',
+        authorBio: raw.authorBio || ''
     };
 
     if (Array.isArray(raw.comments)) {
@@ -2079,7 +2083,24 @@ async function submitCommunityPost(commId) {
     var comm = null;
     for (var i = 0; i < communities.length; i++) { if (communities[i].id === commId) { comm = communities[i]; break; } }
     if (!comm) return;
-    var newPost = { id: createLocalId('comm'), communityId: commId, author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, isBlurred: isBlurred, originPeerId: peerId || localClientId, scope: 'community' };
+    var newPost = { 
+        id: createLocalId('comm'), 
+        communityId: commId, 
+        author: currentUser, 
+        content: text, 
+        likes: 0, 
+        likedBy: [], 
+        createdAt: Date.now(), 
+        media: postMedia || null, 
+        mediaType: postMediaType || null, 
+        isBlurred: isBlurred, 
+        originPeerId: peerId || localClientId, 
+        scope: 'community',
+        authorPhoto: currentUserPhoto,
+        authorBanner: currentProfileBanner,
+        authorFullname: currentFullname,
+        authorBio: currentBio
+    };
     upsertCommunityPost(commId, newPost, true);
     if (input) input.value = ''; if (blurToggle) blurToggle.checked = false; postMedia = null; postMediaType = null;
     var preview = document.getElementById('community-post-preview-img'); if (preview) preview.style.display = 'none';
@@ -2203,7 +2224,23 @@ async function submitPost() {
     var wordCount = countWords(text);
     if (wordCount > 1000) { showToast('❌ Jumlah kata terlalu banyak! Max 1000 kata. Anda menulis: ' + wordCount + ' kata'); return; }
     if (hasXSSAttempt(text)) { if (input) input.value = ''; triggerSecurityBan('feed-post-xss-attempt'); return; }
-    var newPost = { id: createLocalId('feed'), author: currentUser, content: text, likes: 0, likedBy: [], createdAt: Date.now(), media: postMedia || null, mediaType: postMediaType || null, isBlurred: isBlurred, originPeerId: peerId || localClientId, scope: 'feed' };
+    var newPost = { 
+        id: createLocalId('feed'), 
+        author: currentUser, 
+        content: text, 
+        likes: 0, 
+        likedBy: [], 
+        createdAt: Date.now(), 
+        media: postMedia || null, 
+        mediaType: postMediaType || null, 
+        isBlurred: isBlurred, 
+        originPeerId: peerId || localClientId, 
+        scope: 'feed',
+        authorPhoto: currentUserPhoto,
+        authorBanner: currentProfileBanner,
+        authorFullname: currentFullname,
+        authorBio: currentBio
+    };
     upsertFeedPost(newPost, true);
     if (input) input.value = ''; if (blurToggle) blurToggle.checked = false; postMedia = null; postMediaType = null;
     var preview = document.getElementById('post-preview-img'); if (preview) preview.style.display = 'none';
