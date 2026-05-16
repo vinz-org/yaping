@@ -130,6 +130,7 @@
             var newBio = elBio ? elBio.value.trim() : '';
             var maxLength = typeof USERNAME_MAX_LENGTH !== 'undefined' ? USERNAME_MAX_LENGTH : 20;
 
+            // Validasi username
             if (!newUsername) {
                 if (typeof showToast === 'function') showToast('Username harus diisi');
                 if (elUser) elUser.focus();
@@ -158,7 +159,11 @@
 
             var prevUser = currentUser;
 
-            var result = await updateProfileAuthenticated(newUsername, newFullname, newBio, currentUserPhoto || null);
+            // Ambil foto dari localStorage jika tidak ada di memory
+            var photoToSave = currentUserPhoto || localStorage.getItem('yaping_currentUserPhoto') || null;
+            var bannerToSave = currentProfileBanner || localStorage.getItem('yaping_profileBanner') || null;
+
+            var result = await updateProfileAuthenticated(newUsername, newFullname, newBio, photoToSave);
             if (!result || !result.success) {
                 if (typeof showToast === 'function') showToast((result && result.error) || 'Gagal menyimpan profil');
                 return;
@@ -168,7 +173,7 @@
                 username: newUsername,
                 full_name: newFullname,
                 bio: newBio,
-                avatar_url: currentUserPhoto || null
+                avatar_url: photoToSave || null
             });
 
             if (typeof migrateFollowGraphUsername === 'function' && prevUser && prevUser !== currentUser) {
@@ -177,9 +182,13 @@
             if (typeof syncMyFollowingIntoGraph === 'function') syncMyFollowingIntoGraph();
             if (typeof broadcastFollowGraphUpdate === 'function') broadcastFollowGraphUpdate();
 
+            // Simpan banner ke localStorage
             if (typeof currentProfileBanner !== 'undefined') {
-                if (currentProfileBanner) localStorage.setItem('yaping_profileBanner', currentProfileBanner);
-                else localStorage.removeItem('yaping_profileBanner');
+                if (bannerToSave) {
+                    localStorage.setItem('yaping_profileBanner', bannerToSave);
+                } else {
+                    localStorage.removeItem('yaping_profileBanner');
+                }
             }
             if (typeof renderProfileBanner === 'function') renderProfileBanner();
 

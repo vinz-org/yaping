@@ -1428,22 +1428,69 @@ function removePostImage() {
 }
 
 function handleProfilePhotoUpload(event) {
-    var file = event.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { showToast('Ukuran foto terlalu besar (maksimal 5MB)'); return; }
-    var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (validTypes.indexOf(file.type) === -1) { showToast('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP'); return; }
-    var reader = new FileReader();
-    reader.onload = function(e) {
-        var photoData = e.target.result;
-        currentUserPhoto = photoData;
-        var preview = document.getElementById('photo-preview');
-        var container = document.getElementById('photo-preview-container');
-        if (preview && container) { preview.src = photoData; container.style.display = 'block'; }
-        renderProfileAvatar(); renderSidebarProfilePic();
-        showToast('Foto profil dipilih. Klik "Simpan Perubahan" untuk menyimpan.');
-    };
-    reader.readAsDataURL(file);
+    try {
+        var file = event.target && event.target.files ? event.target.files[0] : null;
+        if (!file) return;
+        
+        // Validasi ukuran file
+        var maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            showToast('Ukuran foto terlalu besar (maksimal 5MB). Ukuran file: ' + formatFileSize(file.size));
+            if (event.target) event.target.value = '';
+            return;
+        }
+        
+        // Validasi tipe file
+        var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (validTypes.indexOf(file.type) === -1) {
+            showToast('Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP');
+            if (event.target) event.target.value = '';
+            return;
+        }
+        
+        var reader = new FileReader();
+        reader.onerror = function() {
+            showToast('Gagal membaca file. Coba lagi.');
+            if (event.target) event.target.value = '';
+        };
+        reader.onload = function(e) {
+            try {
+                var photoData = e.target.result;
+                if (!photoData || photoData.length === 0) {
+                    showToast('File kosong atau tidak valid');
+                    if (event.target) event.target.value = '';
+                    return;
+                }
+                
+                // Simpan ke global variable dan localStorage
+                currentUserPhoto = photoData;
+                localStorage.setItem('yaping_currentUserPhoto', photoData);
+                
+                // Update preview
+                var preview = document.getElementById('photo-preview');
+                var container = document.getElementById('photo-preview-container');
+                if (preview && container) {
+                    preview.src = photoData;
+                    container.style.display = 'block';
+                }
+                
+                // Render ulang UI
+                if (typeof renderProfileAvatar === 'function') renderProfileAvatar();
+                if (typeof renderSidebarProfilePic === 'function') renderSidebarProfilePic();
+                
+                showToast('Foto profil berhasil dipilih. Klik "Simpan Perubahan" untuk menyimpan ke database.');
+            } catch (innerError) {
+                console.error('[Profile Photo] Load error:', innerError);
+                showToast('Terjadi kesalahan saat memproses foto');
+                if (event.target) event.target.value = '';
+            }
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[Profile Photo] Error:', error);
+        showToast('Terjadi kesalahan saat upload foto profil');
+        if (event && event.target) event.target.value = '';
+    }
 }
 
 function triggerProfileBannerUpload() {
@@ -1452,43 +1499,105 @@ function triggerProfileBannerUpload() {
 }
 
 function handleProfileBannerUpload(event) {
-    var file = event.target && event.target.files ? event.target.files[0] : null;
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { showToast('Ukuran banner terlalu besar (maksimal 5MB)'); if (event.target) event.target.value = ''; return; }
-    var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (validTypes.indexOf(file.type) === -1) { showToast('Format tidak didukung. Gunakan JPG, PNG, GIF, atau WebP'); if (event.target) event.target.value = ''; return; }
-    var reader = new FileReader();
-    reader.onload = function(e) {
-        var data = e.target.result;
-        currentProfileBanner = data;
-        renderProfileBanner();
-        var preview = document.getElementById('banner-preview');
-        var container = document.getElementById('banner-preview-container');
-        if (preview && container) {
-            var safe = sanitizeMediaSrc(data, 'image');
-            if (safe) { preview.src = safe; container.style.display = 'block'; }
+    try {
+        var file = event.target && event.target.files ? event.target.files[0] : null;
+        if (!file) return;
+        
+        // Validasi ukuran file
+        var maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            showToast('Ukuran banner terlalu besar (maksimal 5MB). Ukuran file: ' + formatFileSize(file.size));
+            if (event.target) event.target.value = '';
+            return;
         }
-        showToast('Banner dipilih. Klik "Simpan Perubahan" untuk menyimpan.');
-    };
-    reader.readAsDataURL(file);
+        
+        // Validasi tipe file
+        var validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (validTypes.indexOf(file.type) === -1) {
+            showToast('Format tidak didukung. Gunakan JPG, PNG, GIF, atau WebP');
+            if (event.target) event.target.value = '';
+            return;
+        }
+        
+        var reader = new FileReader();
+        reader.onerror = function() {
+            showToast('Gagal membaca file. Coba lagi.');
+            if (event.target) event.target.value = '';
+        };
+        reader.onload = function(e) {
+            try {
+                var bannerData = e.target.result;
+                if (!bannerData || bannerData.length === 0) {
+                    showToast('File kosong atau tidak valid');
+                    if (event.target) event.target.value = '';
+                    return;
+                }
+                
+                // Simpan ke global variable dan localStorage
+                currentProfileBanner = bannerData;
+                localStorage.setItem('yaping_profileBanner', bannerData);
+                
+                // Update preview
+                var preview = document.getElementById('banner-preview');
+                var container = document.getElementById('banner-preview-container');
+                if (preview && container) {
+                    var safe = sanitizeMediaSrc(bannerData, 'image');
+                    if (safe) {
+                        preview.src = safe;
+                        container.style.display = 'block';
+                    }
+                }
+                
+                // Render ulang UI
+                if (typeof renderProfileBanner === 'function') renderProfileBanner();
+                
+                showToast('Banner berhasil dipilih. Klik "Simpan Perubahan" untuk menyimpan ke database.');
+            } catch (innerError) {
+                console.error('[Profile Banner] Load error:', innerError);
+                showToast('Terjadi kesalahan saat memproses banner');
+                if (event.target) event.target.value = '';
+            }
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[Profile Banner] Error:', error);
+        showToast('Terjadi kesalahan saat upload banner profil');
+        if (event && event.target) event.target.value = '';
+    }
 }
 
 function clearProfileBanner() {
-    currentProfileBanner = '';
-    var input = document.getElementById('profileBannerInput');
-    if (input) input.value = '';
-    var preview = document.getElementById('banner-preview');
-    var container = document.getElementById('banner-preview-container');
-    if (preview && container) { preview.removeAttribute('src'); container.style.display = 'none'; }
-    renderProfileBanner();
-    showToast('Banner dihapus dari tampilan. Simpan Perubahan untuk mengonfirmasi.');
+    try {
+        currentProfileBanner = '';
+        localStorage.removeItem('yaping_profileBanner');
+        
+        var input = document.getElementById('profileBannerInput');
+        if (input) input.value = '';
+        
+        var preview = document.getElementById('banner-preview');
+        var container = document.getElementById('banner-preview-container');
+        if (preview && container) {
+            preview.removeAttribute('src');
+            container.style.display = 'none';
+        }
+        
+        if (typeof renderProfileBanner === 'function') renderProfileBanner();
+        showToast('Banner dihapus. Klik "Simpan Perubahan" untuk mengonfirmasi.');
+    } catch (error) {
+        console.error('[Clear Banner] Error:', error);
+        showToast('Gagal menghapus banner');
+    }
 }
 
 function renderProfileBanner() {
     var cover = document.getElementById('profile-cover');
     if (!cover) return;
-    var safe = sanitizeMediaSrc(currentProfileBanner, 'image');
-    if (safe) {
+    
+    // Jika banner kosong di memory, coba muat dari localStorage
+    var bannerToRender = currentProfileBanner || localStorage.getItem('yaping_profileBanner') || '';
+    
+    var safe = sanitizeMediaSrc(bannerToRender, 'image');
+    if (safe && bannerToRender) {
         cover.classList.add('has-banner');
         cover.style.backgroundImage = 'linear-gradient(0deg, rgba(0,0,0,0.42), rgba(0,0,0,0.15)), url(' + JSON.stringify(safe) + ')';
         cover.style.backgroundSize = 'cover';
@@ -1506,17 +1615,35 @@ function renderProfileBanner() {
 function renderProfileAvatar() {
     var avatarEl = document.getElementById('profile-avatar-big');
     if (!avatarEl) return;
-    var safePhoto = sanitizeMediaSrc(currentUserPhoto, 'image');
-    if (safePhoto) { avatarEl.innerHTML = '<img src="' + escapeAttr(safePhoto) + '" class="profile-photo" alt="Foto Profil">'; avatarEl.classList.add('has-photo'); }
-    else { avatarEl.textContent = '👤'; avatarEl.classList.remove('has-photo'); }
+    
+    // Jika foto kosong di memory, coba muat dari localStorage
+    var photoToRender = currentUserPhoto || localStorage.getItem('yaping_currentUserPhoto') || '';
+    
+    var safePhoto = sanitizeMediaSrc(photoToRender, 'image');
+    if (safePhoto && photoToRender) {
+        avatarEl.innerHTML = '<img src="' + escapeAttr(safePhoto) + '" class="profile-photo" alt="Foto Profil">';
+        avatarEl.classList.add('has-photo');
+    } else {
+        avatarEl.textContent = '👤';
+        avatarEl.classList.remove('has-photo');
+    }
 }
 
 function renderSidebarProfilePic() {
     var sidebarPic = document.querySelector('.sidebar-profile-pic');
     if (!sidebarPic) return;
-    var safePhoto = sanitizeMediaSrc(currentUserPhoto, 'image');
-    if (safePhoto) { sidebarPic.innerHTML = '<img src="' + escapeAttr(safePhoto) + '" alt="Foto Profil">'; sidebarPic.classList.add('has-photo'); }
-    else { sidebarPic.textContent = '👤'; sidebarPic.classList.remove('has-photo'); }
+    
+    // Jika foto kosong di memory, coba muat dari localStorage
+    var photoToRender = currentUserPhoto || localStorage.getItem('yaping_currentUserPhoto') || '';
+    
+    var safePhoto = sanitizeMediaSrc(photoToRender, 'image');
+    if (safePhoto && photoToRender) {
+        sidebarPic.innerHTML = '<img src="' + escapeAttr(safePhoto) + '" alt="Foto Profil">';
+        sidebarPic.classList.add('has-photo');
+    } else {
+        sidebarPic.textContent = '👤';
+        sidebarPic.classList.remove('has-photo');
+    }
 }
 
 function getPostUserPhotoHTML(author) {
