@@ -425,7 +425,7 @@ async function updateProfileAuthenticated(username, fullName, bio, avatarUrl) {
         var validationError = validateAuthUsername(username);
         if (validationError) return { success: false, error: validationError };
 
-        var profile = await upsertUserProfile({
+        var profileData = {
             id: authUser.id,
             username: username,
             email: currentEmail || authUser.email || null,
@@ -433,8 +433,22 @@ async function updateProfileAuthenticated(username, fullName, bio, avatarUrl) {
             bio: String(bio || '').trim(),
             avatar_url: avatarUrl || null,
             updated_at: new Date().toISOString()
-        }, authSessionToken);
+        };
 
+        var profile = null;
+        var dbUpdateSuccess = false;
+
+        try {
+            // Try to update database
+            profile = await upsertUserProfile(profileData, authSessionToken);
+            dbUpdateSuccess = true;
+        } catch (dbError) {
+            console.warn('[Auth] Database update failed, using fallback localStorage:', dbError);
+            // Fallback: use provided data as profile
+            profile = profileData;
+        }
+
+        // Try metadata update (optional)
         try {
             await authUserRequest('PUT', {
                 data: {
@@ -447,8 +461,20 @@ async function updateProfileAuthenticated(username, fullName, bio, avatarUrl) {
             console.warn('[Auth] Metadata update skipped:', metadataError);
         }
 
+        // Update local session and localStorage
         persistAuthSession(authUser, authSessionToken, authRefreshToken, authExpiresAt, username, currentEmail, profile);
-        return { success: true, user: authUser, profile: profile };
+
+        // Also save to localStorage as backup
+        localStorage.setItem('yaping_currentUser', username);
+        localStorage.setItem('yaping_currentFullname', profile.full_name || username);
+        localStorage.setItem('yaping_currentBio', profile.bio || '');
+        if (profile.avatar_url) {
+            localStorage.setItem('yaping_currentUserPhoto', profile.avatar_url);
+        } else {
+            localStorage.removeItem('yaping_currentUserPhoto');
+        }
+
+        return { success: true, user: authUser, profile: profile, dbSuccess: dbUpdateSuccess };
     } catch (e) {
         console.error('[Auth] Profile update error:', e);
         return { success: false, error: e.message || 'Gagal menyimpan profil' };
