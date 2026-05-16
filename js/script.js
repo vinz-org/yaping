@@ -1650,10 +1650,30 @@ function renderSidebarProfilePic() {
     }
 }
 
-function getPostUserPhotoHTML(author) {
-    var safePhoto = sanitizeMediaSrc(currentUserPhoto, 'image');
-    if (author === currentUser && safePhoto) return '<img src="' + escapeAttr(safePhoto) + '" class="post-user-photo" alt="Foto">';
+function getPostUserPhotoHTML(authorOrPost) {
+    // Accept either author username string or full post object
+    var photo = '';
+    if (authorOrPost && typeof authorOrPost === 'object') {
+        photo = authorOrPost.authorPhoto || authorOrPost.photo || '';
+    } else {
+        // authorOrPost is username string
+        // fallback to currentUserPhoto if author is currentUser
+        if (authorOrPost === currentUser) photo = currentUserPhoto || '';
+    }
+    var safePhoto = sanitizeMediaSrc(photo, 'image');
+    if (safePhoto) return '<img src="' + escapeAttr(safePhoto) + '" class="post-user-photo" alt="Foto">';
     return '<span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;">👤</span>';
+}
+
+function getPostDisplayHTML(post) {
+    if (!post) return '';
+    var fullname = escapeHtml(post.authorFullname || post.author || '');
+    var username = escapeHtml(post.author || '');
+    var badge = getBadgeHTML(post.author || '');
+    if (fullname && fullname !== (post.author || '')) {
+        return '<div style="display:flex;flex-direction:column;line-height:1;">' + '<span style="font-weight:bold;font-size:13px;">' + fullname + '</span>' + '<span style="font-size:11px;color:var(--fb-text-light);">' + username + badge + '</span></div>';
+    }
+    return '<span class="username-with-badge">' + username + badge + '</span>';
 }
 
 // ===== KOMENTAR =====
@@ -2132,7 +2152,7 @@ function renderCommunityPosts(commId) {
         for (var c = 0; c < communities.length; c++) { if (communities[c].id === commId) { communityOwner = communities[c].owner; break; } }
         var opBadge = post.author === communityOwner ? ' <span style="background-color:#FFD700;color:#000;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:bold;">Owner Komunitas</span>' : '';
         var mediaHTML = renderPostMedia(post);
-        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post.author) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span></div>' + opBadge + '<span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'community\',' + commId + ')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'community', commId) + '</div>';
+        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getPostDisplayHTML(post) + '</span></div>' + opBadge + '<span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeCommunityPost(' + commId + ',\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'community\',' + commId + ')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'community', commId) + '</div>';
     }
     return html;
 }
@@ -2275,7 +2295,7 @@ function renderFeed() {
         var editButton = isOwnPost(post) ? '<button class="post-edit-btn" onclick="showEditPostModal(\'' + jsString(post.id) + '\')" style="margin-right:4px;">Edit</button>' : '';
         var deleteButton = isOwnPost(post) ? '<button class="post-delete-btn" onclick="deleteFeedPost(\'' + jsString(post.id) + '\')">Hapus</button>' : '';
         var mediaHTML = renderPostMedia(post);
-        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post.author) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getUserDisplayHTML(post.author) + '</span></div><span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'feed', null) + '</div>';
+        html += '<div class="post-card" style="margin-bottom:8px;"><div class="post-card-header" style="display:flex;align-items:center;gap:8px;padding:8px 12px;"><div style="display:flex;align-items:center;gap:6px;">' + getPostUserPhotoHTML(post) + '<span class="post-username" onclick="viewUserProfile(\'' + jsString(post.author) + '\')">' + getPostDisplayHTML(post) + '</span></div><span style="display:flex;align-items:center;gap:6px;margin-left:auto;"><span class="post-timestamp">' + timeAgo + '</span>' + editButton + deleteButton + '</span></div><div class="post-body">' + parsePostWithHashtags(post.content) + '</div>' + mediaHTML + '<div class="post-footer"><div class="post-actions-left"><button class="like-btn' + (isLiked ? ' liked' : '') + '" onclick="likeFeedPost(\'' + jsString(post.id) + '\')">' + (isLiked ? '❤️' : '🤍') + ' ' + post.likes + '</button><button class="comment-btn' + (openComments[post.id] ? ' comment-btn-active' : '') + '" onclick="toggleComments(\'' + jsString(post.id) + '\',\'feed\')">💬 ' + (Array.isArray(post.comments) ? post.comments.length : 0) + ' Komentar</button></div><button class="share-btn" onclick="showToast(\'🔗 Link disalin!\')">🔗 Bagikan</button></div>' + renderCommentSection(post, 'feed', null) + '</div>';
     }
     feed.innerHTML = html;
 }
@@ -2448,6 +2468,10 @@ function saveProfile() {
     renderProfileAvatar(); renderSidebarProfilePic(); renderProfileBanner(); updateProfileStats(); renderRightSidebar(); renderFeed();
     showToast('✅ Profil berhasil diperbarui!');
     showProfileSection('info', document.querySelector('.profile-tab-btn'));
+    // Broadcast profile update to connected peers so their views update in real-time
+    try {
+        broadcastPeerMessage({ type: 'profile-update', user: currentUser, photo: currentUserPhoto || '', banner: currentProfileBanner || '', fullname: currentFullname || '', bio: currentBio || '' });
+    } catch (e) { console.warn('[Profile] Broadcast failed:', e); }
 }
 
 function toggleDarkMode() {
