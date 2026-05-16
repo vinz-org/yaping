@@ -611,19 +611,19 @@ function loadBadgeList() {
     }
 }
 
+function checkIsAdmin(username) {
+    if (!username) return false;
+    var u = String(username).trim().toLowerCase();
+    if (badgedUsers.has(u)) return true;
+    if (u.startsWith('@') && badgedUsers.has(u.substring(1))) return true;
+    if (!u.startsWith('@') && badgedUsers.has('@' + u)) return true;
+    return false;
+}
+
 function getBadgeHTML(username) {
-    if (!username) return '';
-    
-    // Normalize username: ensure it has @ prefix for matching
-    var normalized = username.startsWith('@') ? username : '@' + username;
-    
-    // Check both with and without @ for backward compatibility
-    var plain = username.startsWith('@') ? username.substring(1) : username;
-    
-    if (badgedUsers.has(normalized) || badgedUsers.has(plain)) {
+    if (checkIsAdmin(username)) {
         return '<img src="badge.png" class="official-badge" title="Akun Resmi" alt="✓">';
     }
-    
     return '';
 }
 
@@ -1612,12 +1612,12 @@ function parsePostWithHashtags(text) { return formatPostContent(text); }
 
 // ===== BAN USER OLEH BADGE (SERVER-SIDE) =====
 function banUserByBadge(username) {
-    if (!badgedUsers.has(currentUser)) {
+    if (!checkIsAdmin(currentUser)) {
         showToast('⚠️ Hanya akun resmi (ber-badge) yang bisa melakukan ban.');
         return;
     }
     if (username === currentUser) { showToast('⚠️ Kamu tidak bisa ban diri sendiri.'); return; }
-    if (badgedUsers.has(username)) { showToast('⚠️ Tidak bisa ban user yang memiliki badge resmi.'); return; }
+    if (checkIsAdmin(username)) { showToast('⚠️ Tidak bisa ban user yang memiliki badge resmi.'); return; }
 
     var months = prompt('Ban ' + username + ':\n\nKetik "PERMANEN" untuk ban permanen,\natau masukkan jumlah bulan (1-12):', '3');
     if (months === null) return;
@@ -2170,7 +2170,7 @@ function updateProfileStats() {
     var el;
     var adminGroup = document.getElementById('admin-settings-group');
     var adminSidebarLink = document.getElementById('sidebar-admin-link');
-    var isAdmin = badgedUsers.has(currentUser);
+    var isAdmin = checkIsAdmin(currentUser);
 
     if (adminGroup) {
         if (isAdmin) adminGroup.classList.remove('hidden');
@@ -2337,7 +2337,7 @@ function showNotifications() {
 }
 
 async function adminActionBan() {
-    if (!badgedUsers.has(currentUser)) {
+    if (!checkIsAdmin(currentUser)) {
         showToast('⚠️ Hanya admin yang bisa melakukan ban.');
         return;
     }
@@ -2352,7 +2352,7 @@ async function adminActionBan() {
 }
 
 async function adminActionUnban() {
-    if (!badgedUsers.has(currentUser)) {
+    if (!checkIsAdmin(currentUser)) {
         showToast('⚠️ Hanya admin yang bisa melakukan unban.');
         return;
     }
@@ -2383,7 +2383,7 @@ function updateSidebarStats() {
 }
 
 function renderAdminPanel() {
-    if (!badgedUsers.has(currentUser)) { switchToTab('home'); return; }
+    if (!checkIsAdmin(currentUser)) { switchToTab('home'); return; }
     updateSidebarStats();
 
     // Update Stats
