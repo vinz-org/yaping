@@ -6,7 +6,7 @@
 var SUPABASE_URL = 'https://lzxjjiebpnhjeifnnqms.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6eGpqaWVicG5oamVpZm5ucW1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNzYxMjYsImV4cCI6MjA5Mjc1MjEyNn0.Tro63bLrHih8EJ4cVBt4SDy2lhVE4P3LQ4T81TFGKRI';
 
-// ===== SUPABASE REST HELPER =====
+// ===== SUPABASE REST HELPER ====
 
 function sbHeaders() {
     return {
