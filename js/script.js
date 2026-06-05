@@ -25,6 +25,7 @@ var following = new Set();
 /** @type {Record<string, string[]>} Daftar mengikuti per user (disinkron lewat P2P) — dipakai untuk menghitung pengikut */
 var knownFollowGraph = {};
 var chatMessages = {};
+var activeChatUser = '';
 var currentUser = '@user';
 var currentFullname = 'Pengguna Yaping';
 var currentBio = '';
@@ -661,6 +662,7 @@ function switchToTab(tabName) {
     if (tabName === 'komunitas') renderCommunities('all');
     else if (tabName === 'profile') { updateProfileStats(); renderMyPosts(); renderProfileBanner(); }
     else if (tabName === 'admin') renderAdminPanel();
+    else if (tabName === 'chat') renderChatTab();
     else if (tabName === 'home') renderFeed();
     else if (tabName === 'search') renderSearchTab();
     else if (tabName === 'hashtags') renderHashtags();
@@ -1976,6 +1978,130 @@ function sendChatMessage(username) {
     if (!text) { showToast('✍️ Tulis pesan terlebih dahulu.'); return; }
     addChatMessage(username, text, currentUser);
     openUserChat(username);
+}
+
+function getChatParticipants() {
+    var participants = [];
+    var current = String(currentUser).trim().toLowerCase();
+    for (var key in chatMessages) {
+        if (!chatMessages.hasOwnProperty(key) || key.indexOf('chat_') !== 0) continue;
+        var parts = key.substring(5).split('_');
+        if (parts.length < 2) continue;
+        var other = parts[0] === current ? parts[1] : parts[0];
+        if (!other) continue;
+        if (participants.indexOf(other) === -1) participants.push(other);
+    }
+    participants.sort();
+    return participants;
+}
+
+function getLastChatTimestamp(username) {
+    var thread = getChatThread(username);
+    if (!thread.length) return 0;
+    return thread[thread.length - 1].createdAt || 0;
+}
+
+function getLastChatSnippet(username) {
+    var thread = getChatThread(username);
+    if (!thread.length) return 'Belum ada pesan.';
+    var last = thread[thread.length - 1];
+    return escapeHtml(last.text).substring(0, 40).replace(/\n/g, ' ');
+}
+
+function renderChatList() {
+    var listContainer = document.getElementById('chatList');
+    if (!listContainer) return;
+    var participants = getChatParticipants();
+    if (participants.length === 0) {
+        listContainer.innerHTML = '<div class="sidebar-empty" style="padding:14px; text-align:center;">Belum ada chat. Mulai kirim pesan dari profil pengguna.</div>';
+        return;
+    }
+    participants.sort(function(a, b) {
+        return getLastChatTimestamp(b) - getLastChatTimestamp(a);
+    });
+    var html = '';
+    for (var i = 0; i < participants.length; i++) {
+        var username = participants[i];
+        var activeClass = username === activeChatUser ? ' active' : '';
+        html += '<div class="chat-contact' + activeClass + '" onclick="openChatInTab(\'' + jsString(username) + '\')">';
+        html += '<div>';
+        html += '<div class="contact-name">' + escapeHtml(username) + '</div>';
+        html += '<div class="contact-meta">' + escapeHtml(getLastChatSnippet(username)) + '</div>';
+        html += '</div>';
+        html += '<div style="font-size:11px;color:#68739a;">' + formatTimeAgo(getLastChatTimestamp(username)) + '</div>';
+        html += '</div>';
+    }
+    listContainer.innerHTML = html;
+}
+
+function renderChatMessagesPanel(username) {
+    var messages = getChatThread(username);
+    var html = '<div class="chat-window">';
+    if (!messages.length) {
+        html += '<div class="sidebar-empty" style="padding:14px; text-align:center;">Belum ada percakapan dengan ' + escapeHtml(username) + '. Kirim pesan untuk memulai.</div>';
+    } else {
+        for (var i = 0; i < messages.length; i++) {
+            var msg = messages[i];
+            var isOwn = String(msg.sender).toLowerCase() === String(currentUser).toLowerCase();
+            html += '<div class="chat-message ' + (isOwn ? 'own' : 'other') + '">';
+            html += '<div class="chat-message-sender">' + escapeHtml(msg.sender) + '</div>';
+            html += '<div>' + escapeHtml(msg.text).replace(/\n/g, '<br>') + '</div>';
+            html += '<div class="chat-message-time">' + formatTimeAgo(msg.createdAt) + '</div>';
+            html += '</div>';
+        }
+    }
+    html += '</div>';
+    html += '<div class="chat-input-row">';
+    html += '<textarea id="chat-message-input-tab" placeholder="Tulis pesan..." onkeydown="if(event.key === \'Enter\' && !event.shiftKey){event.preventDefault(); sendChatMessageToTab(\'' + jsString(username) + '\');}"></textarea>';
+    html += '<button class="primary-btn" onclick="sendChatMessageToTab(\'' + jsString(username) + '\')">Kirim</button>';
+    html += '</div>';
+    return html;
+}
+
+function openChatInTab(username) {
+    if (!username || username === currentUser) { showToast('⚠️ Tidak bisa chat dengan diri sendiri.'); return; }
+    activeChatUser = username;
+    renderChatList();
+    var header = document.getElementById('chatHeaderTitle');
+    if (header) header.textContent = 'Chat dengan ' + username;
+    var panel = document.getElementById('chatPanel');
+    if (panel) panel.innerHTML = renderChatMessagesPanel(username);
+    setTimeout(function() {
+        var windowEl = panel ? panel.querySelector('.chat-window') : null;
+        if (windowEl) windowEl.scrollTop = windowEl.scrollHeight;
+    }, 10);
+}
+
+function sendChatMessageToTab(username) {
+    var input = document.getElementById('chat-message-input-tab');
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text) { showToast('✍️ Tulis pesan terlebih dahulu.'); return; }
+    addChatMessage(username, text, currentUser);
+    openChatInTab(username);
+    var nextInput = document.getElementById('chat-message-input-tab');
+    if (nextInput) nextInput.focus();
+}
+
+function updateChatPanelPlaceholder() {
+    var header = document.getElementById('chatHeaderTitle');
+    if (header) header.textContent = 'Pilih pengguna untuk mulai chat';
+    var panel = document.getElementById('chatPanel');
+    if (panel) panel.innerHTML = '<div class="sidebar-empty" style="padding:14px; text-align:center;">Klik pengguna di sebelah kiri untuk melihat riwayat chat.</div>';
+}
+
+function renderChatTab() {
+    renderChatList();
+    if (activeChatUser) {
+        openChatInTab(activeChatUser);
+    } else {
+        updateChatPanelPlaceholder();
+    }
+}
+
+function clearActiveChat() {
+    activeChatUser = '';
+    renderChatTab();
 }
 
 function viewUserProfile(username) {
