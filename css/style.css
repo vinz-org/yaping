@@ -1789,6 +1789,22 @@ input:checked + .slider:before { transform: translateX(16px); }
     }
     .chat-sidebar {
         min-height: auto;
+        max-height: 300px;
+    }
+    .chat-list {
+        max-height: 280px;
+    }
+    .chat-panel {
+        min-height: auto;
+    }
+}
+
+@media (max-width: 600px) {
+    .chat-tab-layout {
+        grid-template-columns: 1fr;
+    }
+    .chat-sidebar {
+        display: none;
     }
 }
 
@@ -1893,6 +1909,45 @@ body.dark-mode .chat-input-row textarea {
     background: #12203b;
     border-color: #2e4a7e;
     color: #e2e8f0;
+}
+
+body.dark-mode .chat-list {
+    background: #0f1823;
+}
+
+body.dark-mode .chat-contact {
+    background: #151e2e;
+    border-color: #223050;
+}
+
+body.dark-mode .chat-contact:hover {
+    background: #1a2538;
+}
+
+body.dark-mode .chat-contact.active {
+    background: #1e2d48;
+    border-color: #4d78d4;
+}
+
+body.dark-mode .chat-contact .contact-name {
+    color: #dbe5f5;
+}
+
+body.dark-mode .chat-contact .contact-meta {
+    color: #8b97b8;
+}
+
+body.dark-mode .chat-panel {
+    color: #dbe5f5;
+}
+
+body.dark-mode .chat-header-title {
+    color: #dbe5f5;
+}
+
+body.dark-mode .chat-main .content-box {
+    background: #111c2f;
+    border-color: #223050;
 }
 
 /* DARK MODE - EMOJI PICKER */

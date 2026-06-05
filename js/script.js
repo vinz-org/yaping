@@ -586,6 +586,20 @@ function initState() {
     joinedCommunities = loadStoredJSON('yaping_joinedCommunities', [1]);
     feedPosts = loadStoredJSON('yaping_feedPosts', []);
     loadChatHistory();
+    
+    // Add sample chats if empty
+    if (Object.keys(chatMessages).length === 0) {
+        var key1 = getChatStorageKey(currentUser, '@alice');
+        var key2 = getChatStorageKey(currentUser, '@bob');
+        chatMessages[key1] = [
+            { sender: currentUser, text: 'Halo @alice!', createdAt: Date.now() - 86400000 },
+            { sender: '@alice', text: 'Halo juga!', createdAt: Date.now() - 85800000 }
+        ];
+        chatMessages[key2] = [
+            { sender: currentUser, text: 'Apa kabar @bob?', createdAt: Date.now() - 3600000 }
+        ];
+        saveChatHistory();
+    }
 
     // Purge bad data
     purgeXSSAttemptsFromStorage();

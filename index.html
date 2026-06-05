@@ -423,6 +423,29 @@
             </div>
         </div>
 
+        <!-- TAB: CHAT -->
+        <div id="chat-tab" class="tab-content hidden">
+            <div class="chat-tab-layout">
+                <div class="chat-sidebar">
+                    <div class="sidebar-box" style="padding: 0; overflow: hidden;">
+                        <div class="sidebar-box-title">Chat</div>
+                        <div id="chatList" class="chat-list"></div>
+                    </div>
+                </div>
+                <div class="chat-main">
+                    <div class="content-box" style="padding: 16px; display: flex; flex-direction: column;">
+                        <div class="chat-header">
+                            <div class="chat-header-title" id="chatHeaderTitle">Pilih pengguna untuk mulai chat</div>
+                            <button class="secondary-btn" onclick="clearActiveChat()" style="padding: 6px 10px; font-size: 12px;">Reset</button>
+                        </div>
+                        <div id="chatPanel" class="chat-panel">
+                            <div class="sidebar-empty" style="padding:14px; text-align:center;">Klik pengguna di sebelah kiri untuk melihat riwayat chat.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- TAB: SEARCH -->
         <div id="search-tab" class="tab-content hidden">
             <div class="content-box">
