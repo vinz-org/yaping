@@ -1629,6 +1629,73 @@ input:checked + .slider:before { transform: translateX(16px); }
     line-height: 1.5;
 }
 
+.chat-window {
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px;
+    background: #f5f8ff;
+    border: 1px solid #d8e3f6;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.chat-message {
+    max-width: 84%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    word-wrap: break-word;
+    background: #ffffff;
+    border: 1px solid #e3eaf5;
+}
+
+.chat-message.own {
+    align-self: flex-end;
+    background: #d9eaff;
+    border-color: #8bb5ff;
+}
+
+.chat-message.other {
+    align-self: flex-start;
+    background: #ffffff;
+}
+
+.chat-message-sender {
+    font-size: 11px;
+    color: #4a5568;
+    margin-bottom: 4px;
+}
+
+.chat-message-time {
+    font-size: 10px;
+    color: #6b7280;
+    margin-top: 6px;
+    text-align: right;
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.chat-input-row textarea {
+    width: 100%;
+    min-height: 78px;
+    resize: vertical;
+    border: 1px solid #d8e3f6;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+}
+
+.chat-input-row button {
+    padding: 10px 14px;
+    height: 42px;
+}
+
 #modal-footer {
     padding: 10px 15px;
     background: #f5f5f5;
@@ -1708,6 +1775,28 @@ body.dark-mode #modal-title {
 
 body.dark-mode #modal-body {
     color: #d0d8e8;
+}
+
+body.dark-mode .chat-window {
+    background: #14203b;
+    border-color: #2e4a7e;
+}
+
+body.dark-mode .chat-message {
+    background: #1c2b4b;
+    border-color: #2e4a7e;
+    color: #e2e8f0;
+}
+
+body.dark-mode .chat-message.own {
+    background: #1f345d;
+    border-color: #5b94ff;
+}
+
+body.dark-mode .chat-input-row textarea {
+    background: #12203b;
+    border-color: #2e4a7e;
+    color: #e2e8f0;
 }
 
 /* DARK MODE - EMOJI PICKER */

@@ -24,6 +24,7 @@ var badgedUsers = new Set();
 var following = new Set();
 /** @type {Record<string, string[]>} Daftar mengikuti per user (disinkron lewat P2P) — dipakai untuk menghitung pengikut */
 var knownFollowGraph = {};
+var chatMessages = {};
 var currentUser = '@user';
 var currentFullname = 'Pengguna Yaping';
 var currentBio = '';
@@ -583,6 +584,7 @@ function initState() {
     communityPosts = loadStoredJSON('yaping_communityPosts', {});
     joinedCommunities = loadStoredJSON('yaping_joinedCommunities', [1]);
     feedPosts = loadStoredJSON('yaping_feedPosts', []);
+    loadChatHistory();
 
     // Purge bad data
     purgeXSSAttemptsFromStorage();
@@ -1910,10 +1912,77 @@ function toggleFollow(username) {
     viewUserProfile(username);
 }
 
+function getChatStorageKey(userA, userB) {
+    var a = String(userA || '').trim().toLowerCase();
+    var b = String(userB || '').trim().toLowerCase();
+    if (!a || !b) return '';
+    return 'chat_' + (a < b ? a + '_' + b : b + '_' + a);
+}
+
+function loadChatHistory() {
+    chatMessages = loadStoredJSON('yaping_chat_history', {});
+}
+
+function saveChatHistory() {
+    saveStoredJSON('yaping_chat_history', chatMessages);
+}
+
+function getChatThread(username) {
+    var key = getChatStorageKey(currentUser, username);
+    return Array.isArray(chatMessages[key]) ? chatMessages[key] : [];
+}
+
+function addChatMessage(username, text, sender) {
+    if (!username || !text || !sender) return;
+    var key = getChatStorageKey(currentUser, username);
+    chatMessages[key] = chatMessages[key] || [];
+    chatMessages[key].push({ sender: sender, text: text, createdAt: Date.now() });
+    if (chatMessages[key].length > 200) chatMessages[key].shift();
+    saveChatHistory();
+}
+
+function renderChatMessages(username) {
+    var messages = getChatThread(username);
+    if (messages.length === 0) {
+        return '<div class="sidebar-empty" style="padding:14px; text-align:center;">Belum ada percakapan. Kirim pesan dulu untuk memulai chat.</div>';
+    }
+    var html = '';
+    for (var i = 0; i < messages.length; i++) {
+        var msg = messages[i];
+        var isOwn = String(msg.sender).toLowerCase() === String(currentUser).toLowerCase();
+        html += '<div class="chat-message ' + (isOwn ? 'own' : 'other') + '">';
+        html += '<div class="chat-message-sender">' + escapeHtml(msg.sender) + '</div>';
+        html += '<div>' + escapeHtml(msg.text).replace(/\n/g, '<br>') + '</div>';
+        html += '<div class="chat-message-time">' + formatTimeAgo(msg.createdAt) + '</div>';
+        html += '</div>';
+    }
+    return html;
+}
+
+function openUserChat(username) {
+    if (!username || username === currentUser) { showToast('⚠️ Tidak bisa chat dengan diri sendiri.'); return; }
+    var content = '<div class="chat-window">' + renderChatMessages(username) + '</div>' +
+        '<div class="chat-input-row">' +
+            '<textarea id="chat-message-input" placeholder="Tulis pesan..." onkeydown="if(event.key === \'Enter\' && !event.shiftKey){event.preventDefault(); sendChatMessage(\'' + jsString(username) + '\');}"></textarea>' +
+            '<button class="primary-btn" onclick="sendChatMessage(\'' + jsString(username) + '\')">Kirim</button>' +
+        '</div>';
+    showModal('Chat dengan ' + username, content);
+}
+
+function sendChatMessage(username) {
+    var input = document.getElementById('chat-message-input');
+    if (!input) return;
+    var text = input.value.trim();
+    if (!text) { showToast('✍️ Tulis pesan terlebih dahulu.'); return; }
+    addChatMessage(username, text, currentUser);
+    openUserChat(username);
+}
+
 function viewUserProfile(username) {
     if (username === currentUser) { switchToTab('profile'); return; }
     var isFollowing = following.has(username);
     var followBtn = '<button class="follow-btn-big' + (isFollowing ? ' following' : '') + '" style="margin-top:8px; width:100%;" onclick="toggleFollow(\'' + jsString(username) + '\')">' + (isFollowing ? '✓ Mengikuti' : '+ Ikuti') + '</button>';
+    var chatBtn = '<button class="primary-btn" style="margin-top:8px; width:100%; background: #1d8cf8; border:none;" onclick="openUserChat(\'' + jsString(username) + '\')">💬 Chat</button>';
     var banButton = '';
     if (badgedUsers.has(currentUser) && username !== currentUser) {
         banButton = '<button class="post-delete-btn" style="background:#b00020;color:white;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:11px;margin-top:8px; margin-left:4px;" onclick="banUserByBadge(\'' + jsString(username) + '\')">🚫 Ban</button>';
@@ -1949,7 +2018,7 @@ function viewUserProfile(username) {
             '<div style="font-weight:bold;font-size:11px;color:#333;margin-bottom:4px;">Mengikuti (' + fct + ')</div>' +
             '<div style="max-height:88px;overflow-y:auto;border:1px solid #e5e5e5;border-radius:4px;padding:4px 6px;background:#fafafa;">' + followListToHtml(followingThem, 'Belum ada data (perlu sinkron P2P)') + '</div>' +
         '</div>' +
-        '<div style="display:flex; justify-content:center; align-items:center; max-width:220px; margin: 10px auto 0;">' + followBtn + banButton + '</div></div>' +
+        '<div style="display:flex; justify-content:center; align-items:center; max-width:220px; margin: 10px auto 0; gap:6px; flex-wrap:wrap;">' + followBtn + chatBtn + banButton + '</div></div>' +
         '<div style="border-top:1px solid #d8dfea;padding-top:10px;"><div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#333;">📝 Postingan Terakhir (' + userPosts.length + ')</div>' + postsHtml + '</div>';
     showModal('Profil ' + username, content);
 }
