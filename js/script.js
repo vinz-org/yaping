@@ -2027,7 +2027,7 @@ function renderChatList() {
     if (!listContainer) return;
     var participants = getChatParticipants();
     if (participants.length === 0) {
-        listContainer.innerHTML = '<div class="sidebar-empty" style="padding:14px; text-align:center;">Belum ada chat. Mulai kirim pesan dari profil pengguna.</div>';
+        listContainer.innerHTML = '<div class="sidebar-empty" style="padding:14px; text-align:center; color:#999;">Belum ada chat.<br>Mulai kirim pesan dari profil pengguna.</div>';
         return;
     }
     participants.sort(function(a, b) {
@@ -2037,12 +2037,16 @@ function renderChatList() {
     for (var i = 0; i < participants.length; i++) {
         var username = participants[i];
         var activeClass = username === activeChatUser ? ' active' : '';
+        var lastTime = getLastChatTimestamp(username);
+        var timeString = lastTime > 0 ? formatTimeAgo(lastTime) : 'Baru';
+        var onlineIndicator = '<span class="online-indicator" title="Online"></span>';
+        
         html += '<div class="chat-contact' + activeClass + '" onclick="openChatInTab(\'' + jsString(username) + '\')">';
-        html += '<div>';
-        html += '<div class="contact-name">' + escapeHtml(username) + '</div>';
+        html += '<div class="chat-contact-content">';
+        html += '<div class="contact-name">' + onlineIndicator + escapeHtml(username) + '</div>';
         html += '<div class="contact-meta">' + escapeHtml(getLastChatSnippet(username)) + '</div>';
         html += '</div>';
-        html += '<div style="font-size:11px;color:#68739a;">' + formatTimeAgo(getLastChatTimestamp(username)) + '</div>';
+        html += '<div class="contact-time">' + timeString + '</div>';
         html += '</div>';
     }
     listContainer.innerHTML = html;
@@ -2052,22 +2056,34 @@ function renderChatMessagesPanel(username) {
     var messages = getChatThread(username);
     var html = '<div class="chat-window">';
     if (!messages.length) {
-        html += '<div class="sidebar-empty" style="padding:14px; text-align:center;">Belum ada percakapan dengan ' + escapeHtml(username) + '. Kirim pesan untuk memulai.</div>';
+        html += '<div class="sidebar-empty" style="padding:14px; text-align:center; margin: auto; color:#999;">Belum ada percakapan dengan ' + escapeHtml(username) + '.<br>Kirim pesan untuk memulai chat baru! 💬</div>';
     } else {
+        var lastDate = null;
         for (var i = 0; i < messages.length; i++) {
             var msg = messages[i];
             var isOwn = String(msg.sender).toLowerCase() === String(currentUser).toLowerCase();
+            var msgDate = new Date(msg.createdAt).toLocaleDateString();
+            
+            // Tampilkan separator tanggal jika berbeda
+            if (msgDate !== lastDate) {
+                html += '<div style="text-align:center; margin:8px 0; color:#999; font-size:11px;"><span style="background:white; padding:2px 8px; border-radius:12px;">— ' + msgDate + ' —</span></div>';
+                lastDate = msgDate;
+            }
+            
             html += '<div class="chat-message ' + (isOwn ? 'own' : 'other') + '">';
-            html += '<div class="chat-message-sender">' + escapeHtml(msg.sender) + '</div>';
-            html += '<div>' + escapeHtml(msg.text).replace(/\n/g, '<br>') + '</div>';
-            html += '<div class="chat-message-time">' + formatTimeAgo(msg.createdAt) + '</div>';
+            if (!isOwn) {
+                html += '<div class="chat-message-sender">' + escapeHtml(msg.sender) + '</div>';
+            }
+            var msgText = escapeHtml(msg.text).replace(/\n/g, '<br>');
+            html += '<div style="word-break:break-word;">' + msgText + '</div>';
+            html += '<div class="chat-message-time">' + new Date(msg.createdAt).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'}) + '</div>';
             html += '</div>';
         }
     }
     html += '</div>';
     html += '<div class="chat-input-row">';
-    html += '<textarea id="chat-message-input-tab" placeholder="Tulis pesan..." onkeydown="if(event.key === \'Enter\' && !event.shiftKey){event.preventDefault(); sendChatMessageToTab(\'' + jsString(username) + '\');}"></textarea>';
-    html += '<button class="primary-btn" onclick="sendChatMessageToTab(\'' + jsString(username) + '\')">Kirim</button>';
+    html += '<textarea id="chat-message-input-tab" placeholder="Tulis pesan di sini... (Shift+Enter untuk baris baru)" onkeydown="if(event.key === \'Enter\' && !event.shiftKey){event.preventDefault(); sendChatMessageToTab(\'' + jsString(username) + '\');}"></textarea>';
+    html += '<button class="primary-btn" onclick="sendChatMessageToTab(\'' + jsString(username) + '\')" style="flex-shrink:0;">📤 Kirim</button>';
     html += '</div>';
     return html;
 }
@@ -2078,12 +2094,20 @@ function openChatInTab(username) {
     renderChatList();
     var header = document.getElementById('chatHeaderTitle');
     if (header) header.textContent = 'Chat dengan ' + username;
+    var statusIndicator = document.getElementById('chatStatusIndicator');
+    if (statusIndicator) {
+        statusIndicator.innerHTML = '<span class="online-indicator" title="Online"></span>';
+    }
     var panel = document.getElementById('chatPanel');
     if (panel) panel.innerHTML = renderChatMessagesPanel(username);
     setTimeout(function() {
         var windowEl = panel ? panel.querySelector('.chat-window') : null;
-        if (windowEl) windowEl.scrollTop = windowEl.scrollHeight;
-    }, 10);
+        if (windowEl) {
+            windowEl.scrollTop = windowEl.scrollHeight;
+        }
+        var inputEl = document.getElementById('chat-message-input-tab');
+        if (inputEl) inputEl.focus();
+    }, 50);
 }
 
 function sendChatMessageToTab(username) {
@@ -2092,16 +2116,25 @@ function sendChatMessageToTab(username) {
     var text = input.value.trim();
     if (!text) { showToast('✍️ Tulis pesan terlebih dahulu.'); return; }
     addChatMessage(username, text, currentUser);
+    input.value = '';
+    input.style.height = 'auto';
     openChatInTab(username);
-    var nextInput = document.getElementById('chat-message-input-tab');
-    if (nextInput) nextInput.focus();
+    showToast('✓ Pesan terkirim!');
 }
 
 function updateChatPanelPlaceholder() {
     var header = document.getElementById('chatHeaderTitle');
+    var statusIndicator = document.getElementById('chatStatusIndicator');
     if (header) header.textContent = 'Pilih pengguna untuk mulai chat';
+    if (statusIndicator) statusIndicator.innerHTML = '';
     var panel = document.getElementById('chatPanel');
-    if (panel) panel.innerHTML = '<div class="sidebar-empty" style="padding:14px; text-align:center;">Klik pengguna di sebelah kiri untuk melihat riwayat chat.</div>';
+    if (panel) {
+        panel.innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#999; gap:12px;">' +
+            '<div style="font-size:48px;">💬</div>' +
+            '<div style="font-weight:600;">Mulai Chat!</div>' +
+            '<div style="font-size:13px; text-align:center; max-width:200px;">Pilih pengguna dari daftar di sebelah kiri untuk memulai percakapan atau lihat riwayat chat Anda.</div>' +
+            '</div>';
+    }
 }
 
 function renderChatTab() {
@@ -2115,6 +2148,10 @@ function renderChatTab() {
 
 function clearActiveChat() {
     activeChatUser = '';
+    var header = document.getElementById('chatHeaderTitle');
+    if (header) header.textContent = 'Pilih pengguna untuk mulai chat';
+    var statusIndicator = document.getElementById('chatStatusIndicator');
+    if (statusIndicator) statusIndicator.innerHTML = '';
     renderChatTab();
 }
 
