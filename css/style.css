@@ -1793,18 +1793,12 @@ body.dark-mode .chat-input-row textarea:focus {
 
 .chat-tab-layout {
     display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 16px;
-
     grid-template-columns: 300px 1fr;
     gap: 16px;
     align-items: stretch;
-
     min-height: 650px;
     max-height: 700px;
-
     height: 600px;
-
 }
 
 .chat-sidebar {
@@ -1951,33 +1945,20 @@ body.dark-mode .contact-meta {
 .chat-panel {
     display: flex;
     flex-direction: column;
-<<<<<<< HEAD
     gap: 0;
     flex: 1;
     min-height: 0;
-=======
-    gap: 0;
-    height: 100%;
->>>>>>> e35277519f7365b017ae39a67fe0daffb207b47c
 }
 
 .chat-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-<<<<<<< HEAD
     gap: 12px;
     padding: 16px;
     border-bottom: 1px solid #e0e7ff;
     background: linear-gradient(to right, #ffffff, #f8f9fa);
     flex-shrink: 0;
-=======
-    gap: 10px;
-    padding: 16px;
-    border-bottom: 1px solid #e0e7ff;
-    background: linear-gradient(to right, #ffffff, #f8f9fa);
-    border-radius: 12px 12px 0 0;
->>>>>>> e35277519f7365b017ae39a67fe0daffb207b47c
 }
 
 body.dark-mode .chat-header {
@@ -2003,14 +1984,10 @@ body.dark-mode .chat-header-title {
     flex: 1;
     max-height: none;
     overflow-y: auto;
-<<<<<<< HEAD
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-=======
-    flex: 1;
->>>>>>> e35277519f7365b017ae39a67fe0daffb207b47c
 }
 
 .chat-panel .chat-input-row {
@@ -2068,12 +2045,8 @@ body.dark-mode .typing-indicator {
 @media (max-width: 960px) {
     .chat-tab-layout {
         grid-template-columns: 1fr;
-<<<<<<< HEAD
         min-height: auto;
         max-height: none;
-=======
-        height: auto;
->>>>>>> e35277519f7365b017ae39a67fe0daffb207b47c
     }
     .chat-sidebar {
         max-height: 300px;
@@ -2177,7 +2150,6 @@ body.dark-mode #modal-body {
     color: #d0d8e8;
 }
 
-<<<<<<< HEAD
 /* CHAT SIDEBAR BOX */
 .chat-sidebar .sidebar-box {
     display: flex !important;
@@ -2264,8 +2236,6 @@ body.dark-mode .chat-main .content-box {
     border-color: #223050;
 }
 
-=======
->>>>>>> e35277519f7365b017ae39a67fe0daffb207b47c
 /* DARK MODE - EMOJI PICKER */
 body.dark-mode #emoji-picker {
     background: #1a2332;
