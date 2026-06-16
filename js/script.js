@@ -1999,10 +1999,11 @@ function getChatParticipants() {
     var current = String(currentUser).trim().toLowerCase();
     for (var key in chatMessages) {
         if (!chatMessages.hasOwnProperty(key) || key.indexOf('chat_') !== 0) continue;
-        var parts = key.substring(5).split('_');
-        if (parts.length < 2) continue;
-        var other = parts[0] === current ? parts[1] : parts[0];
-        if (!other) continue;
+        var rest = key.substring(5);
+        var usernames = rest.split('_').filter(function(p) { return p.startsWith('@'); });
+        if (usernames.length < 2) continue;
+        var other = usernames[0] === current ? usernames[1] : usernames[0];
+        if (!other || other === current) continue;
         if (participants.indexOf(other) === -1) participants.push(other);
     }
     participants.sort();
