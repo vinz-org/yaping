@@ -4,7 +4,7 @@
 // ============================================
 var YAPING_BADGE_USERS = [
     '@hexaa',
-    '@byyyy',
+    'byyyy',
     '@anotheroom',
     '@yaping',
     '@qwerty',
