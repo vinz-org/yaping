@@ -478,68 +478,18 @@
 
     <!-- RIGHT -->
     <div id="right">
-      <!-- SIGNUP FORM -->
-      <div class="form-box">
-        <h2>Daftar Yaping</h2>
-        <div class="free-note">Gratis selamanya. Selalu.</div>
-        <hr class="section-hr">
-        <div class="name-row">
-          <input type="text" placeholder="Nama depan" id="fn">
-          <input type="text" placeholder="Nama belakang" id="ln">
-        </div>
-        <input type="email" placeholder="Alamat email" id="em">
-        <input type="password" placeholder="Password" id="pw">
-        <input type="password" placeholder="Konfirmasi password" id="cpw">
-        <div style="margin-bottom:6px;">
-          <span class="form-field-label">Tanggal Lahir</span>
-          <div class="gender-dob">
-            <select>
-              <option>Bulan</option>
-              <option>Januari</option><option>Februari</option><option>Maret</option>
-              <option>April</option><option>Mei</option><option>Juni</option>
-              <option>Juli</option><option>Agustus</option><option>September</option>
-              <option>Oktober</option><option>November</option><option>Desember</option>
-            </select>
-            <select>
-              <option>Tanggal</option>
-              <script>for(let i=1;i<=31;i++) document.write(`<option>${i}</option>`);</script>
-            </select>
-            <select>
-              <option>Tahun</option>
-              <script>for(let i=2026;i>=1924;i--) document.write(`<option>${i}</option>`);</script>
-            </select>
-          </div>
-        </div>
-        <div style="margin-bottom:8px;">
-          <span class="form-field-label">Jenis Kelamin</span>
-          <div class="gender-dob">
-            <select>
-              <option value="">Pilih...</option>
-              <option>Laki-laki</option>
-              <option>Perempuan</option>
-              <option>Lainnya</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn-signup" onclick="handleSignup()">Daftar Sekarang</button>
-        <div class="privacy-note">
-          Dengan klik Daftar Sekarang, kamu menyetujui
-          <a href="#">Ketentuan Layanan</a>,
-          <a href="#">Kebijakan Privasi</a>, dan
-          <a href="#">Kebijakan Cookie</a> Yaping.
-        </div>
-      </div>
-
-      <!-- LOGIN BAR -->
-      <div class="login-divider">
-        <input type="text" placeholder="Username / Email" id="li-u">
-        <input type="password" placeholder="Password" id="li-p">
-        <button class="btn-login" onclick="handleLogin()">Masuk</button>
-        <a href="#" class="forgot-link">Lupa?</a>
+      <div class="form-box" style="text-align:center; padding: 24px 18px;">
+        <div style="font-size:40px; margin-bottom:10px;">👋</div>
+        <h2 style="font-size:18px; margin-bottom:6px;">Ayo Gabung Yaping!</h2>
+        <p style="font-size:12px; color:#666; margin-bottom:16px; line-height:1.5;">Gratis selamanya. Terhubung dengan teman, bagikan momen, dan ikuti komunitas favoritmu.</p>
+        <a href="https://yapings.vercel.app/home.html" style="text-decoration:none;">
+          <button class="btn-signup" style="font-size:15px; height:40px; background:linear-gradient(to bottom, #5b74a8 0%, #3b5998 100%); border-color:#2d4373;">Masuk ke Yaping →</button>
+        </a>
       </div>
     </div>
   </div>
 </div>
+
 
 <!-- FEATURES STRIP -->
 <div id="features-strip">
@@ -638,7 +588,7 @@
       <span class="divider">·</span>
       <a href="#">Privasi</a>
       <span class="divider">·</span>
-      <a href="#">Cookie</a>
+      <a href="#">Cookiee</a>
       <span class="divider">·</span>
       <a href="#">Ketentuan</a>
       <span class="divider">·</span>
