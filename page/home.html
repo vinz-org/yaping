@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <title>Yaping - Jaringan Sosial</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Tahoma:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Peer.js untuk P2P Connection -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- Badge resmi - edit username di badge.js -->
+    <script src="js/badge.js"></script>
+    <!-- Supabase Database Integration -->
+    <script src="js/db.js"></script>
+    <!-- Authentication Module -->
+    <script src="js/auth.js"></script>
+    <!-- Features Module -->
+    <script src="js/features.js"></script>
+</head>
+<body>
+
+<!-- TOP HEADER (Facebook-style blue bar) -->
+<div id="topbar">
+    <div id="topbar-inner">
+        <div id="logo">yaping</div>
+        <div id="topbar-search">
+            <input type="text" placeholder="Cari teman, komunitas..." id="searchInput">
+            <button onclick="doSearch()">Cari</button>
+        </div>
+        <div id="topbar-nav">
+            <a href="#" onclick="switchToTab('home'); return false;" id="nav-home">Beranda</a>
+            <a href="#" onclick="switchToTab('komunitas'); return false;" id="nav-komunitas">Komunitas</a>
+            <a href="#" onclick="switchToTab('chat'); return false;" id="nav-chat">Chat</a>
+            <a href="#" onclick="switchToTab('updates'); return false;" id="nav-updates">Updates</a>
+            <a href="#" onclick="switchToTab('profile'); return false;" id="nav-profile">Profil</a>
+            <a href="#" onclick="showNotifications()" id="nav-notif">🔔 <span id="notif-badge" class="hidden">0</span></a>
+        </div>
+    </div>
+</div>
+
+<!-- NOTIFICATION DROPDOWN -->
+<div id="notif-dropdown" class="hidden">
+    <div class="notif-header">Notifikasi</div>
+    <div id="notif-list">
+        <div class="notif-empty">Belum ada notifikasi</div>
+    </div>
+    <div class="notif-footer"><a href="#" onclick="clearNotifications(); return false;">Hapus semua</a></div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div id="main-layout">
+
+    <!-- LEFT SIDEBAR -->
+    <div id="left-sidebar">
+        <div class="sidebar-box">
+            <div class="sidebar-profile-pic">👤</div>
+            <div class="sidebar-username" id="sidebar-username">@unknown</div>
+            <div class="sidebar-tagline">Member sejak April 2026</div>
+            <hr class="sidebar-hr">
+            <ul class="sidebar-menu">
+                <li><a href="#" onclick="switchToTab('home'); return false;">🏠 Beranda</a></li>
+                <li><a href="#" onclick="switchToTab('komunitas'); return false;">👥 Komunitas</a></li>
+                <li><a href="#" onclick="switchToTab('updates'); return false;">📰 Updates</a></li>
+                <li><a href="#" onclick="switchToTab('profile'); return false;">👤 Profil Saya</a></li>
+                <li id="sidebar-admin-link" class="hidden"><a href="#" onclick="switchToTab('admin'); return false;">🛡️ Admin Panel</a></li>
+                <li id="sidebar-admin-stats" class="sidebar-stat hidden" style="padding: 5px 8px; border-bottom: 1px dotted var(--fb-border);">
+                    <span style="font-size: 11px;">P2P Online: <strong id="sidebar-online-count">0</strong></span>
+                    <span style="font-size: 11px;">Offline: <strong id="sidebar-offline-count">0</strong></span>
+                </li>
+                <li><a href="#" onclick="switchToTab('settings'); return false;">⚙️ Pengaturan</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- CENTER CONTENT -->
+    <div id="center-content">
+
+        <!-- TAB: HOME -->
+        <div id="home-tab" class="tab-content">
+            <!-- Discord Announcement -->
+            <div class="content-box" style="background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%); color: white; padding: 12px 16px; margin-bottom: 12px; border-radius: 6px; text-align: center;">
+                <div style="font-weight: bold; font-size: 14px; margin-bottom: 6px;">🎉 Sekarang Yaping sudah ada Discord!</div>
+                <div style="font-size: 13px; margin-bottom: 8px;">Bergabunglah dengan komunitas kami di server Discord resmi.</div>
+                <a href="https://discord.gg/Q9Wuax7gKC" target="_blank" style="display: inline-block; background: white; color: #5865F2; padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; transition: all 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Masuk Discord Sekarang →</a>
+            </div>
+
+            <!-- Create Post Box -->
+            <div class="content-box create-post-box">
+                <div class="create-post-header">Apa yang kamu pikirkan hari ini?</div>
+                <textarea id="postInput" placeholder="Tulis sesuatu di sini..."></textarea>
+                <div id="post-preview-img" class="post-preview-img" style="display:none;">
+                    <img id="post-img-preview" src="" alt="preview">
+                    <button class="close-img-btn" onclick="removePostImage()">✕</button>
+                </div>
+                <div class="form-row form-row-inline" style="margin-top: 8px;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="post-blur-toggle" title="Blur Media">
+                        <span class="slider"></span>
+                    </label>
+                    <span style="font-size: 12px; color: var(--fb-text-light);">Blur Media (Sensor)</span>
+                </div>
+                <div class="create-post-footer">
+                    <div class="post-options">
+                        <button class="option-btn" onclick="addEmoji()">😊 Emoji</button>
+                        <button class="option-btn" onclick="triggerMediaUpload()">📹 Media (MP3/MP4/Foto)</button>
+                        <input type="file" id="mediaUpload" accept=".mp3,.mp4,image/*" style="display:none;" onchange="handleMediaUpload(event)">
+                    </div>
+                    <button id="postBtn" class="primary-btn" onclick="submitPost()">Bagikan</button>
+                </div>
+            </div>
+
+            <!-- Sort Options -->
+            <div class="content-box" style="padding: 12px; background: #f8f9fa; border-top: 1px solid #ddd; margin-bottom: 12px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="font-weight: bold; color: #666; font-size: 13px;">Urutkan:</span>
+                    <button id="sort-newest-btn" class="sort-btn active" onclick="setSortMode('newest')">🕐 Terbaru</button>
+                    <button id="sort-popular-btn" class="sort-btn" onclick="setSortMode('popular')">❤️ Terpopuler</button>
+                </div>
+            </div>
+
+            <!-- Feed -->
+            <div id="feed"></div>
+        </div>
+
+        <!-- TAB: KOMUNITAS -->
+        <div id="komunitas-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">Buat Komunitas Baru</div>
+                <div class="create-comm-form">
+                    <div class="form-row">
+                        <label>Nama Komunitas</label>
+                        <input type="text" id="newCommunityInput" placeholder="Contoh: 🎮 Gaming Indonesia">
+                    </div>
+                    <div class="form-row">
+                        <label>Deskripsi</label>
+                        <input type="text" id="newCommunityDesc" placeholder="Deskripsi singkat komunitas...">
+                    </div>
+                    <div class="form-row">
+                        <label>Kategori</label>
+                        <select id="newCommunityCategory" title="Kategori Komunitas">
+                            <option value="🎮">🎮 Gaming</option>
+                            <option value="💻">💻 Teknologi</option>
+                            <option value="😂">😂 Hiburan</option>
+                            <option value="🎵">🎵 Musik</option>
+                            <option value="⚽">⚽ Olahraga</option>
+                            <option value="📚">📚 Pendidikan</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button class="primary-btn" onclick="addCommunity()">Buat Komunitas</button>
+                        <span id="cooldown-info" class="cooldown-text"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-box">
+                <div class="box-title">Semua Komunitas</div>
+                <div class="comm-filter">
+                    <button class="filter-btn active" onclick="filterComm('all', this)">Semua</button>
+                    <button class="filter-btn" onclick="filterComm('mine', this)">Milik Saya</button>
+                </div>
+                <ul id="communityList" class="community-list-new"></ul>
+            </div>
+        </div>
+
+        <!-- TAB: PROFILE -->
+        <div id="profile-tab" class="tab-content hidden">
+            <div id="profile-cover" class="profile-cover">
+                <div class="profile-cover-inner">
+                    <div id="profile-avatar-big" class="profile-avatar-big">👤</div>
+                    <div class="profile-name-area">
+                        <h2 id="profile-username-display">@user</h2>
+                        <span id="profile-fullname-display">Pengguna Yaping</span><span id="profile-follow-meta" class="profile-follow-meta"></span>
+                    </div>
+                </div>
+                <button type="button" class="profile-cover-banner-btn" onclick="triggerProfileBannerUpload()" title="Unggah foto banner profil">📷 Ubah banner</button>
+                <input type="file" id="profileBannerInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="handleProfileBannerUpload(event)">
+            </div>
+            <div class="profile-tabs">
+                <button class="profile-tab-btn active" onclick="showProfileSection('info', this)">Informasi</button>
+                <button class="profile-tab-btn" onclick="showProfileSection('posts', this)">Postingan</button>
+                <button class="profile-tab-btn" onclick="showProfileSection('edit', this)">Edit Profil</button>
+            </div>
+
+            <!-- Profile Info -->
+            <div id="profile-info-section" class="content-box">
+                <div class="info-grid">
+                    <div class="info-item"><strong>Username:</strong> <span id="pi-username">@user</span></div>
+                    <div class="info-item"><strong>Nama:</strong> <span id="pi-fullname">Pengguna Yaping</span></div>
+                    <div class="info-item"><strong>Bergabung:</strong> <span>April 2026</span></div>
+                    <div class="info-item"><strong>Total Post:</strong> <span id="pi-posts">0</span></div>
+                    <div class="info-item"><strong>Like Diberikan:</strong> <span id="pi-likes">0</span></div>
+                    <div class="info-item"><strong>Komunitas:</strong> <span id="pi-comms">3</span></div>
+                    <div class="info-item"><strong>Pengikut:</strong> <span id="pi-followers">0</span></div>
+                    <div class="info-item"><strong>Mengikuti:</strong> <span id="pi-following">0</span></div>
+                </div>
+            </div>
+
+            <!-- Profile Posts -->
+            <div id="profile-posts-section" class="content-box hidden">
+                <div class="box-title">Postingan Saya</div>
+                <div id="my-posts-feed"></div>
+            </div>
+
+            <!-- Edit Profile -->
+            <div id="profile-edit-section" class="content-box hidden">
+                <div class="box-title">Edit Profil</div>
+                <div class="form-row">
+                    <label>Foto Profil</label>
+                    <div id="photo-preview-container" style="margin-bottom: 10px; display: none;">
+                        <img id="photo-preview" src="" alt="preview" style="width: 80px; height: 80px; border-radius: 3px; object-fit: cover; border: 2px solid var(--fb-border);">
+                    </div>
+                    <input type="file" id="profilePhotoInput" accept="image/*" onchange="handleProfilePhotoUpload(event)" style="padding: 6px 0;">
+                    <small style="color: var(--fb-text-light);">Format: JPG, PNG, GIF, WebP. Maks 5MB.</small>
+                </div>
+                <div class="form-row">
+                    <label>Banner profil</label>
+                    <div id="banner-preview-container" style="margin-bottom: 10px; display: none;">
+                        <img id="banner-preview" src="" alt="Pratinjau banner" style="width: 100%; max-width: 420px; max-height: 100px; border-radius: 3px; object-fit: cover; border: 2px solid var(--fb-border);">
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <button type="button" class="secondary-btn" onclick="triggerProfileBannerUpload()">Pilih gambar banner</button>
+                        <button type="button" class="secondary-btn" onclick="clearProfileBanner()">Hapus banner</button>
+                    </div>
+                    <small style="color: var(--fb-text-light);">JPG, PNG, GIF, WebP. Maks 5MB. Klik Simpan Perubahan untuk menyimpan.</small>
+                </div>
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="edit-username" placeholder="@username">
+                </div>
+                <div class="form-row">
+                    <label>Nama Lengkap</label>
+                    <input type="text" id="edit-fullname" placeholder="Nama kamu">
+                </div>
+                <div class="form-row">
+                    <label>Bio</label>
+                    <textarea id="edit-bio" placeholder="Ceritakan tentang dirimu..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button class="primary-btn" onclick="saveProfile()">Simpan Perubahan</button>
+                    <button class="secondary-btn" onclick="showProfileSection('info', document.querySelector('.profile-tab-btn'))">Batal</button>
+                </div>
+            </div>
+
+            <!-- Popular Posts -->
+            <div class="content-box">
+                <div class="box-title">📢 Postingan Populer</div>
+                <div id="popular-posts-sidebar">
+                    <div class="sidebar-empty">Belum ada postingan</div>
+                </div>
+            </div>
+
+            <!-- Popular Communities -->
+            <div class="content-box">
+                <div class="box-title">👥 Komunitas Populer</div>
+                <div id="popular-comms-sidebar"></div>
+            </div>
+        </div>
+
+        <!-- TAB: ADMIN PANEL -->
+        <div id="admin-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title" style="background: #b00020; color: white; padding: 5px 10px; border-radius: 3px 3px 0 0;">🛡️ Admin Panel - Akun Resmi</div>
+
+                <!-- Stats Section -->
+                <div class="settings-group">
+                    <div class="settings-label">Statistik Jaringan</div>
+                    <div class="settings-row">
+                        <span>User Online (P2P)</span>
+                        <strong id="admin-stats-online">0</strong>
+                    </div>
+                    <div class="settings-row">
+                        <span>User Offline / Diketahui</span>
+                        <strong id="admin-stats-offline">0</strong>
+                    </div>
+                </div>
+
+                <!-- Ban Actions -->
+                <div class="settings-group">
+                    <div class="settings-label">Manajemen Pengguna</div>
+                    <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <span>Ban User by Username</span>
+                        <div style="display:flex; gap:8px; width: 100%;">
+                            <input type="text" id="admin-panel-ban-username" placeholder="@username" style="flex: 1;">
+                            <button class="danger-btn" onclick="adminActionBan()">Ban</button>
+                        </div>
+                    </div>
+                    <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <span>Unban User Account</span>
+                        <div style="display:flex; gap:8px; width: 100%;">
+                            <input type="text" id="admin-panel-unban-username" placeholder="@username" style="flex: 1;">
+                            <button class="primary-btn" onclick="adminActionUnban()">Unban</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ban List -->
+                <div class="settings-group">
+                    <div class="settings-label">Daftar Blokir Saat Ini</div>
+                    <div id="admin-ban-list" style="padding: 10px; font-size: 11px; color: var(--fb-text-light);">
+                        Memuat daftar blokir...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SETTINGS -->
+        <div id="settings-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">⚙️ Pengaturan Akun</div>
+                <div class="settings-group">
+                    <div class="settings-label">Tampilan</div>
+                    <div class="settings-row">
+                        <span>Mode Gelap</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()" title="Mode Gelap">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <span>Ukuran Font</span>
+                        <select onchange="changeFontSize(this.value)" title="Ukuran Font">
+                            <option value="14">Kecil</option>
+                            <option value="16" selected>Normal</option>
+                            <option value="18">Besar</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Privasi</div>
+                    <div class="settings-row">
+                        <span>Profil Publik</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="public-toggle" checked title="Profil Publik">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <span>Tampilkan Status Online</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="online-toggle" checked title="Tampilkan Status Online">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Data</div>
+                    <div class="settings-row">
+                        <span>Hapus semua postingan</span>
+                        <button class="danger-btn" onclick="clearAllPosts()">Hapus</button>
+                    </div>
+                    <div class="settings-row">
+                        <span>Reset semua data</span>
+                        <button class="danger-btn" onclick="resetAllData()">Reset</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Akun</div>
+                    <div class="settings-row">
+                        <span>Keluar dari akun</span>
+                        <button class="danger-btn" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Database</div>
+                    <div class="settings-row">
+                        <span id="db-status-label">Status Supabase</span>
+                        <strong id="db-status-value" style="color:#27ae60;">Menghubungkan...</strong>
+                    </div>
+                    <div class="settings-row">
+                        <span>Sync manual ke database</span>
+                        <button class="primary-btn" onclick="dbPushLocalPosts().then(function(){showToast('✅ Sync selesai!')})">Sync</button>
+                    </div>
+                </div>
+
+                <!-- ADMIN ONLY SETTINGS -->
+                <div id="admin-settings-group" class="settings-group hidden">
+                    <div class="settings-label" style="background: #b00020; color: white;">🛡️ Badge Only (Admin)</div>
+                    <div class="settings-row">
+                        <span>Ban User by Username</span>
+                        <div style="display:flex; gap:4px;">
+                            <input type="text" id="admin-ban-username" placeholder="@username" style="width:100px; padding:2px 5px; font-size:11px;">
+                            <button class="danger-btn" style="padding:2px 8px; font-size:11px;" onclick="adminActionBan()">Ban</button>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span>Unban User Account</span>
+                        <div style="display:flex; gap:4px;">
+                            <input type="text" id="admin-unban-username" placeholder="@username" style="width:100px; padding:2px 5px; font-size:11px;">
+                            <button class="primary-btn" style="padding:2px 8px; font-size:11px;" onclick="adminActionUnban()">Unban</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMMUNITY DETAIL VIEW -->
+        <div id="community-detail-tab" class="tab-content hidden">
+            <!-- Rendered dynamically -->
+        </div>
+
+        <!-- TAB: HASHTAGS -->
+        <div id="hashtags-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">🏷️ Topik Hashtag</div>
+                <div id="hashtagsList" class="hashtags-list">
+                    <div class="sidebar-empty">Belum ada hashtag</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: UPDATES -->
+        <div id="updates-tab" class="tab-content hidden">
+            <div class="content-box">
+                <div class="box-title">📰 Update & Changelog</div>
+                <div style="font-size: 12px; color: #999; margin-bottom: 12px; padding: 8px; background: #f0f2f5; border-radius: 4px;">
+                    Update terbaru dari developer Yaping
+                </div>
+                <div id="updates-feed" style="max-height: 600px; overflow-y: auto;">
+                    <div class="sidebar-empty">Loading updates...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: CHAT -->
+        <div id="chat-tab" class="tab-content hidden">
+            <div class="chat-tab-layout">
+                <div class="chat-sidebar">
+                    <div class="sidebar-box" style="padding: 0; overflow: hidden; display: flex; flex-direction: column; height: 100%; margin-bottom: 0;">
+                        <div class="sidebar-box-title" style="padding: 12px 16px; border-bottom: 1px solid #e0e7ff; flex-shrink: 0;">💬 Chat</div>
+                        <div id="chatList" class="chat-list"></div>
+                    </div>
+                </div>
+                <div class="chat-main">
+                    <div class="chat-header">
+                        <div class="chat-header-title">
+                            <span id="chatStatusIndicator"></span>
+                            <span id="chatHeaderTitle">Pilih pengguna untuk mulai chat</span>
+                        </div>
+                        <button class="secondary-btn" onclick="clearActiveChat()" style="padding: 8px 12px; font-size: 12px; border-radius: 6px; flex-shrink: 0;">✕ Reset</button>
+                    </div>
+                    <div id="chatPanel" class="chat-panel">
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:#999; gap:12px;">
+                            <div style="font-size:48px;">💬</div>
+                            <div style="font-weight:600;">Mulai Chat!</div>
+                            <div style="font-size:13px; text-align:center; max-width:200px;">Pilih pengguna dari daftar di sebelah kiri untuk memulai percakapan atau lihat riwayat chat Anda.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SEARCH -->
+        <div id="search-tab" class="tab-content hidden">
+            <div class="content-box">
+                <h2 style="font-size:16px;margin-bottom:12px;color:#3b5998;">🔍 Cari</h2>
+                <div style="display:flex;gap:8px;margin-bottom:15px;">
+                    <input type="text" id="tabSearchInput" placeholder="Cari user, post, hashtag, atau komunitas..." style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                    <button class="primary-btn" onclick="doGlobalSearch()">Cari</button>
+                </div>
+                <div id="search-results-container"></div>
+            </div>
+        </div>
+
+        <!-- TAB: LOGIN -->
+        <div id="login-tab" class="tab-content hidden">
+            <div class="content-box" style="max-width: 400px; margin: 40px auto;">
+                <div class="box-title" style="text-align: center; font-size: 24px; margin-bottom: 20px;">Masuk ke Yaping</div>
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="login-username" placeholder="@username">
+                </div>
+                <div class="form-row">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Password">
+                </div>
+                <div class="form-row form-row-inline">
+                    <input type="checkbox" id="login-remember" style="width: auto;">
+                    <label for="login-remember">Ingat Saya</label>
+                </div>
+                <div class="form-actions" style="flex-direction: column; gap: 8px;">
+                    <button class="primary-btn" onclick="handleLogin()" style="width: 100%;">Masuk</button>
+                    <button class="secondary-btn" onclick="switchToTab('signup')" style="width: 100%;">Belum punya akun? Daftar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SIGNUP -->
+        <div id="signup-tab" class="tab-content hidden">
+            <div class="content-box" style="max-width: 400px; margin: 40px auto;">
+                <div class="box-title" style="text-align: center; font-size: 24px; margin-bottom: 20px;">Daftar Yaping</div>
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="signup-username" placeholder="@username">
+                </div>
+                <div class="form-row">
+                    <label>Password</label>
+                    <input type="password" id="signup-password" placeholder="Password (minimal 6 karakter)">
+                </div>
+                <div class="form-row">
+                    <label>Konfirmasi Password</label>
+                    <input type="password" id="signup-password-confirm" placeholder="Konfirmasi Password">
+                </div>
+                <div class="form-actions" style="flex-direction: column; gap: 8px;">
+                    <button class="primary-btn" onclick="handleSignup()" style="width: 100%;">Daftar</button>
+                    <button class="secondary-btn" onclick="switchToTab('login')" style="width: 100%;">Sudah punya akun? Masuk</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <div id="right-sidebar">
+    </div>
+
+</div>
+
+<!-- EMOJI PICKER -->
+<div id="emoji-picker" class="hidden">
+    <div class="emoji-grid">
+        <span onclick="insertEmoji('😀')">😀</span><span onclick="insertEmoji('😂')">😂</span>
+        <span onclick="insertEmoji('😍')">😍</span><span onclick="insertEmoji('🥺')">🥺</span>
+        <span onclick="insertEmoji('😎')">😎</span><span onclick="insertEmoji('🤔')">🤔</span>
+        <span onclick="insertEmoji('😡')">😡</span><span onclick="insertEmoji('😭')">😭</span>
+        <span onclick="insertEmoji('🔥')">🔥</span><span onclick="insertEmoji('❤️')">❤️</span>
+        <span onclick="insertEmoji('👍')">👍</span><span onclick="insertEmoji('👎')">👎</span>
+        <span onclick="insertEmoji('🎉')">🎉</span><span onclick="insertEmoji('💯')">💯</span>
+        <span onclick="insertEmoji('🙏')">🙏</span><span onclick="insertEmoji('✨')">✨</span>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" class="hidden">
+    <div id="modal-box">
+        <div id="modal-title"></div>
+        <div id="modal-body"></div>
+        <div id="modal-footer">
+            <button class="secondary-btn" onclick="closeModal()">Tutup</button>
+        </div>
+    </div>
+</div>
+
+<!-- TOAST NOTIFICATION -->
+<div id="toast" class="hidden"></div>
+
+<script src="js/script.js"></script>
+<script src="js/db-patch.js"></script>
+</body>
+</html>
